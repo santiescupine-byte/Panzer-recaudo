@@ -112,9 +112,9 @@ const CONFIG = {
   },
 };
 
-// Helpers para acceder a la config fácilmente
-const SEDES = Object.keys(CONFIG.sedes);
-const TESOREROS = CONFIG.tesoreros;
+// Helpers para acceder a la config fácilmente (funciones para que siempre lean el CONFIG actualizado)
+const getSedes = () => Object.keys(CONFIG.sedes);
+const getTesoreros = () => CONFIG.tesoreros;
 const getOperadores = (sede) => CONFIG.sedes[sede]?.operadores || [];
 const getMaquinas = (sede) => CONFIG.sedes[sede]?.maquinas || [];
 const getBase = (sede) => CONFIG.sedes[sede]?.base || 1000000;
@@ -634,7 +634,7 @@ function App() {
       {/* CONTENT */}
       <div style={S.page}>
         {!ciclo && tab === "inicio" && (
-          <InicioPage onStart={startCiclo} />
+          <InicioPage onStart={startCiclo} apiConfig={apiConfig} apiLoading={apiLoading} />
         )}
 
         {ciclo && tab === "liquidaciones" && !subPage && (
@@ -772,7 +772,7 @@ function App() {
 // ============================================================
 // INICIO PAGE
 // ============================================================
-function InicioPage({ onStart }) {
+function InicioPage({ onStart, apiConfig, apiLoading }) {
   const [sede, setSede] = useState("");
   const [tesorero, setTesorero] = useState("");
 
@@ -792,13 +792,13 @@ function InicioPage({ onStart }) {
         <label style={S.label}>Sede</label>
         <select style={S.select} value={sede} onChange={e => setSede(e.target.value)}>
           <option value="">Seleccionar sede...</option>
-          {SEDES.map(s => <option key={s} value={s}>{s}</option>)}
+          {getSedes().map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
         <label style={S.label}>Tesorero</label>
         <select style={S.select} value={tesorero} onChange={e => setTesorero(e.target.value)}>
           <option value="">Seleccionar tesorero...</option>
-          {TESOREROS.map(t => <option key={t} value={t}>{t}</option>)}
+          {getTesoreros().map(t => <option key={t} value={t}>{t}</option>)}
         </select>
 
         <div style={{ ...S.row, marginBottom: 14 }}>
