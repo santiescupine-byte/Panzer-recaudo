@@ -460,21 +460,19 @@ function App() {
 
   // Cargar configuración desde Google Sheets al abrir
   useEffect(() => {
-    if (API_URL === 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec') return; // modo demo sin API
     setApiLoading(true);
     apiGet('getConfig').then(data => {
       if (data && data.sedes) {
-        // Sobrescribir CONFIG con datos de Sheets
         CONFIG.tesoreros = data.tesoreros || CONFIG.tesoreros;
         const newSedes = {};
         for (const [k, v] of Object.entries(data.sedes)) {
           newSedes[k] = { base: v.base || 1000000, operadores: v.operadores || [], maquinas: v.maquinas || [] };
         }
         CONFIG.sedes = newSedes;
-        setApiConfig(data); // trigger re-render
+        setApiConfig(data);
       }
       setApiLoading(false);
-    });
+    }).catch(() => setApiLoading(false));
   }, []);
 
   // Cycle state
@@ -492,16 +490,16 @@ function App() {
 
   const startCiclo = async (sede, tesorero) => {
     // Cargar historiales de la sede desde API
-    if (API_URL !== 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec') {
-      setApiLoading(true);
+    setApiLoading(true);
+    try {
       const [hm, ht] = await Promise.all([
         apiGet('getHistorialMaquinas', { sede }),
         apiGet('getHistorialTokens', { sede }),
       ]);
       if (hm) { HISTORIAL_MAQUINAS[sede] = hm; setHistMaq(hm); }
       if (ht) { HISTORIAL_TOKENS_OPERADOR[sede] = ht; setHistTok(ht); }
-      setApiLoading(false);
-    }
+    } catch(e) {}
+    setApiLoading(false);
 
     setCiclo({
       id: Date.now(),
@@ -521,9 +519,9 @@ function App() {
 
   const closeCiclo = async () => {
     // Guardar todo en Google Sheets
-    if (API_URL !== 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec') {
-      setApiLoading(true);
-      setApiMsg("Guardando en Google Sheets...");
+    setApiLoading(true);
+    setApiMsg("Guardando en Google Sheets...");
+    try {
       const result = await apiPost({
         action: 'guardarCiclo',
         ciclo,
@@ -533,13 +531,15 @@ function App() {
         gastos,
         tokenReparto,
       });
-      setApiLoading(false);
       if (result?.success) {
         setApiMsg("✅ Guardado exitosamente — ID: " + result.cicloId);
       } else {
         setApiMsg("⚠️ Error al guardar: " + (result?.error || "Sin conexión"));
       }
+    } catch(e) {
+      setApiMsg("⚠️ Error de conexión");
     }
+    setApiLoading(false);
 
     setCiclo(prev => ({ ...prev, estado: "cerrado" }));
     setTab("resumen");
