@@ -1,0 +1,2099 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Panzer Carwash - Recaudo</title>
+  <link rel="manifest" href="data:application/json,{\"name\":\"Panzer Recaudo\",\"short_name\":\"Panzer\",\"start_url\":\".\",\"display\":\"standalone\",\"background_color\":\"#080c14\",\"theme_color\":\"#f59e0b\"}">
+  <meta name="theme-color" content="#080c14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { background: #080c14; overflow-x: hidden; }
+    input, select, button { font-family: inherit; }
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+    input[type="number"] { -moz-appearance: textfield; }
+    /* Loading screen */
+    #loading { position: fixed; inset: 0; background: #080c14; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; z-index: 9999; color: #f59e0b; font-family: system-ui; }
+    #loading .spinner { width: 40px; height: 40px; border: 3px solid #243049; border-top-color: #f59e0b;
+      border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    ::selection { background: #f59e0b33; }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="spinner"></div>
+    <div style="font-size:18px;font-weight:700;">Panzer Carwash</div>
+    <div style="font-size:13px;color:#64748b;margin-top:6px;">Cargando sistema de recaudo...</div>
+  </div>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+
+  <script type="text/babel">
+const { useState, useEffect, useCallback } = React;
+
+// ============================================================
+// API CONNECTION
+// ============================================================
+// ⚠️ REEMPLAZA ESTA URL CON LA DE TU APPS SCRIPT DEPLOYADO
+const API_URL = 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec';
+
+async function apiGet(action, params = {}) {
+  const url = new URL(API_URL);
+  url.searchParams.set('action', action);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  try {
+    const res = await fetch(url.toString());
+    return await res.json();
+  } catch (e) {
+    console.error('API GET error:', e);
+    return null;
+  }
+}
+
+async function apiPost(data) {
+  try {
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(data),
+    });
+    return await res.json();
+  } catch (e) {
+    console.error('API POST error:', e);
+    return null;
+  }
+}
+
+// ============================================================
+// DATA & CONSTANTS
+// ============================================================
+// En producción, este objeto se carga desde la hoja "Configuración" de Google Sheets.
+// Para modificar sedes, tesoreros, operadores o máquinas, solo se edita esa hoja.
+const CONFIG = {
+  tesoreros: ["Carlos Méndez", "Ana Gómez", "Luis Torres"],
+  sedes: {
+    "Toberín": {
+      base: 1000000,
+      operadores: ["Johan", "Kevin", "Nicolas", "Rodrigo"],
+      maquinas: ["Máquina 1", "Máquina 2", "Máquina 3", "Máquina 4", "Máquina 5", "Aspiradora", "Canillita"],
+    },
+    "San Felipe": {
+      base: 1000000,
+      operadores: ["Camilo", "Andrea", "Luis", "Sergio"],
+      maquinas: ["Máquina 1", "Máquina 2", "Máquina 3", "Máquina 4", "Máquina 5", "Máquina 6", "Aspiradora", "Canillita"],
+    },
+    "Suba": {
+      base: 800000,
+      operadores: ["Pedro", "María", "Felipe"],
+      maquinas: ["Máquina 1", "Máquina 2", "Máquina 3", "Máquina 4", "Máquina 5", "Aspiradora"],
+    },
+    "Fontibón": {
+      base: 1000000,
+      operadores: ["Diego", "Laura", "Santiago", "Valentina"],
+      maquinas: ["Máquina 1", "Máquina 2", "Máquina 3", "Máquina 4", "Máquina 5", "Máquina 6", "Aspiradora", "Canillita"],
+    },
+    "Chapinero": {
+      base: 1200000,
+      operadores: ["Andrés", "Carolina", "Julián"],
+      maquinas: ["Máquina 1", "Máquina 2", "Máquina 3", "Máquina 4", "Máquina 5", "Aspiradora", "Canillita"],
+    },
+    "Kennedy": {
+      base: 1000000,
+      operadores: ["Brayan", "Daniela", "Oscar", "Natalia"],
+      maquinas: ["Máquina 1", "Máquina 2", "Máquina 3", "Máquina 4", "Máquina 5", "Máquina 6", "Aspiradora"],
+    },
+  },
+};
+
+// Helpers para acceder a la config fácilmente
+const SEDES = Object.keys(CONFIG.sedes);
+const TESOREROS = CONFIG.tesoreros;
+const getOperadores = (sede) => CONFIG.sedes[sede]?.operadores || [];
+const getMaquinas = (sede) => CONFIG.sedes[sede]?.maquinas || [];
+const getBase = (sede) => CONFIG.sedes[sede]?.base || 1000000;
+
+// Datos históricos del último ciclo por sede (en producción vienen de Google Sheets)
+const HISTORIAL_MAQUINAS = {
+  "Toberín": {
+    "Máquina 1": { gen: 78155000, genToken: 3308, cicloFecha: "12/02/2026" },
+    "Máquina 2": { gen: 52861500, genToken: 2845, cicloFecha: "12/02/2026" },
+    "Máquina 3": { gen: 74770000, genToken: 3120, cicloFecha: "12/02/2026" },
+    "Máquina 4": { gen: 38956500, genToken: 2100, cicloFecha: "12/02/2026" },
+    "Máquina 5": { gen: 44831000, genToken: 1890, cicloFecha: "12/02/2026" },
+    "Máquina 6": { gen: 31250000, genToken: 1560, cicloFecha: "12/02/2026" },
+    "Aspiradora": { gen: 14799000, genToken: 0, cicloFecha: "12/02/2026" },
+    "Canillita":  { gen: 5779000, genToken: 0, cicloFecha: "12/02/2026" },
+  },
+  "San Felipe": {
+    "Máquina 1": { gen: 65420000, genToken: 2750, cicloFecha: "12/02/2026" },
+    "Máquina 2": { gen: 48900000, genToken: 2100, cicloFecha: "12/02/2026" },
+    "Máquina 3": { gen: 59100000, genToken: 2480, cicloFecha: "12/02/2026" },
+    "Máquina 4": { gen: 33750000, genToken: 1650, cicloFecha: "12/02/2026" },
+    "Máquina 5": { gen: 41200000, genToken: 1720, cicloFecha: "12/02/2026" },
+    "Máquina 6": { gen: 27800000, genToken: 1340, cicloFecha: "12/02/2026" },
+    "Aspiradora": { gen: 11500000, genToken: 0, cicloFecha: "12/02/2026" },
+    "Canillita":  { gen: 4200000, genToken: 0, cicloFecha: "12/02/2026" },
+  },
+  "Suba": {
+    "Máquina 1": { gen: 55000000, genToken: 2300, cicloFecha: "12/02/2026" },
+    "Máquina 2": { gen: 42000000, genToken: 1800, cicloFecha: "12/02/2026" },
+    "Máquina 3": { gen: 50500000, genToken: 2100, cicloFecha: "12/02/2026" },
+    "Máquina 4": { gen: 29000000, genToken: 1400, cicloFecha: "12/02/2026" },
+    "Máquina 5": { gen: 36500000, genToken: 1500, cicloFecha: "12/02/2026" },
+    "Aspiradora": { gen: 9800000, genToken: 0, cicloFecha: "12/02/2026" },
+    "Canillita":  { gen: 3500000, genToken: 0, cicloFecha: "12/02/2026" },
+  },
+};
+
+// Historial de tokens por operador por sede (ciclo anterior)
+// En producción esto viene de Google Sheets al cerrar cada ciclo
+const HISTORIAL_TOKENS_OPERADOR = {
+  "Toberín": {
+    "Johan": { entregados: 1056, vendidos: 36, saldo: 1020, cicloFecha: "12/02/2026" },
+    "Kevin": { entregados: 800, vendidos: 189, saldo: 611, cicloFecha: "12/02/2026" },
+    "Nicolas": { entregados: 900, vendidos: 404, saldo: 496, cicloFecha: "12/02/2026" },
+    "Rodrigo": { entregados: 750, vendidos: 211, saldo: 539, cicloFecha: "12/02/2026" },
+  },
+  "San Felipe": {
+    "Camilo": { entregados: 900, vendidos: 320, saldo: 580, cicloFecha: "12/02/2026" },
+    "Andrea": { entregados: 850, vendidos: 275, saldo: 575, cicloFecha: "12/02/2026" },
+    "Luis": { entregados: 700, vendidos: 180, saldo: 520, cicloFecha: "12/02/2026" },
+  },
+  "Suba": {
+    "Pedro": { entregados: 800, vendidos: 350, saldo: 450, cicloFecha: "12/02/2026" },
+    "María": { entregados: 750, vendidos: 290, saldo: 460, cicloFecha: "12/02/2026" },
+  },
+};
+
+const fmt = (n) => {
+  if (n === null || n === undefined || isNaN(n)) return "$0";
+  return "$" + Number(n).toLocaleString("es-CO");
+};
+
+const fmtNum = (n) => {
+  if (n === null || n === undefined || isNaN(n)) return "0";
+  return Number(n).toLocaleString("es-CO");
+};
+
+// ============================================================
+// ICONS (inline SVG components)
+// ============================================================
+const Icon = ({ d, size = 20, color = "currentColor", stroke = 2 }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={stroke} strokeLinecap="round" strokeLinejoin="round">{d}</svg>
+);
+
+const Icons = {
+  home: <Icon d={<><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></>}/>,
+  receipt: <Icon d={<><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></>}/>,
+  cog: <Icon d={<><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></>}/>,
+  coins: <Icon d={<><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></>}/>,
+  chart: <Icon d={<><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></>}/>,
+  check: <Icon d={<><polyline points="20 6 9 17 4 12"/></>}/>,
+  alert: <Icon d={<><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></>}/>,
+  plus: <Icon d={<><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>}/>,
+  back: <Icon d={<><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></>}/>,
+  trash: <Icon d={<><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></>}/>,
+  save: <Icon d={<><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></>}/>,
+  send: <Icon d={<><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></>}/>,
+};
+
+// ============================================================
+// STYLES
+// ============================================================
+const colors = {
+  bg: "#080c14",
+  surface: "#0f1520",
+  surface2: "#161e2e",
+  surface3: "#1c2640",
+  border: "#243049",
+  accent: "#f59e0b",
+  accentDim: "rgba(245,158,11,0.15)",
+  blue: "#3b82f6",
+  blueDim: "rgba(59,130,246,0.12)",
+  green: "#10b981",
+  greenDim: "rgba(16,185,129,0.12)",
+  red: "#ef4444",
+  redDim: "rgba(239,68,68,0.12)",
+  purple: "#8b5cf6",
+  text: "#e2e8f0",
+  textDim: "#64748b",
+  textBright: "#f8fafc",
+};
+
+const S = {
+  app: {
+    background: colors.bg,
+    minHeight: "100vh",
+    fontFamily: "'Segoe UI', system-ui, -apple-system, sans-serif",
+    color: colors.text,
+    maxWidth: 480,
+    margin: "0 auto",
+    position: "relative",
+    paddingBottom: 80,
+  },
+  header: {
+    background: `linear-gradient(135deg, ${colors.surface} 0%, ${colors.surface2} 100%)`,
+    borderBottom: `1px solid ${colors.border}`,
+    padding: "16px 20px",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    position: "sticky",
+    top: 0,
+    zIndex: 50,
+  },
+  headerTitle: {
+    fontSize: 17, fontWeight: 700, color: colors.textBright, margin: 0,
+  },
+  headerSub: {
+    fontSize: 12, color: colors.textDim, margin: 0,
+  },
+  backBtn: {
+    background: "none", border: "none", color: colors.accent, cursor: "pointer",
+    padding: 4, display: "flex",
+  },
+  page: { padding: "16px 16px 20px" },
+  card: {
+    background: colors.surface,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 14,
+    padding: 20,
+    marginBottom: 14,
+  },
+  cardTitle: {
+    fontSize: 15, fontWeight: 700, color: colors.textBright, marginBottom: 14,
+    display: "flex", alignItems: "center", gap: 10,
+  },
+  label: {
+    fontSize: 12, fontWeight: 600, color: colors.textDim, marginBottom: 6,
+    display: "block", letterSpacing: 0.3,
+  },
+  input: {
+    width: "100%",
+    background: colors.surface2,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 10,
+    padding: "12px 14px",
+    color: colors.textBright,
+    fontSize: 15,
+    fontFamily: "inherit",
+    outline: "none",
+    marginBottom: 12,
+    boxSizing: "border-box",
+  },
+  select: {
+    width: "100%",
+    background: colors.surface2,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 10,
+    padding: "12px 14px",
+    color: colors.textBright,
+    fontSize: 15,
+    fontFamily: "inherit",
+    outline: "none",
+    marginBottom: 12,
+    boxSizing: "border-box",
+    WebkitAppearance: "none",
+  },
+  btnPrimary: {
+    width: "100%",
+    background: `linear-gradient(135deg, ${colors.accent}, #d97706)`,
+    border: "none",
+    borderRadius: 12,
+    padding: "14px 20px",
+    color: "#000",
+    fontSize: 15,
+    fontWeight: 700,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    fontFamily: "inherit",
+  },
+  btnSecondary: {
+    width: "100%",
+    background: colors.surface2,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 12,
+    padding: "14px 20px",
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    fontFamily: "inherit",
+  },
+  btnDanger: {
+    background: colors.redDim,
+    border: `1px solid rgba(239,68,68,0.3)`,
+    borderRadius: 10,
+    padding: "10px 16px",
+    color: colors.red,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontFamily: "inherit",
+  },
+  badge: (color, bg) => ({
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "4px 10px",
+    borderRadius: 20,
+    fontSize: 11,
+    fontWeight: 700,
+    color: color,
+    background: bg,
+  }),
+  row: {
+    display: "flex", gap: 10,
+  },
+  col: { flex: 1 },
+  divider: {
+    height: 1,
+    background: colors.border,
+    margin: "14px 0",
+  },
+  resultRow: {
+    display: "flex", justifyContent: "space-between", alignItems: "center",
+    padding: "10px 0",
+    borderBottom: `1px solid ${colors.border}`,
+  },
+  resultLabel: { fontSize: 13, color: colors.textDim },
+  resultValue: { fontSize: 15, fontWeight: 700, color: colors.textBright },
+  navbar: {
+    position: "fixed",
+    bottom: 0,
+    left: "50%",
+    transform: "translateX(-50%)",
+    width: "100%",
+    maxWidth: 480,
+    background: colors.surface,
+    borderTop: `1px solid ${colors.border}`,
+    display: "flex",
+    justifyContent: "space-around",
+    padding: "8px 0 12px",
+    zIndex: 100,
+  },
+  navItem: (active) => ({
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 3,
+    background: "none",
+    border: "none",
+    color: active ? colors.accent : colors.textDim,
+    fontSize: 10,
+    fontWeight: active ? 700 : 500,
+    cursor: "pointer",
+    padding: "4px 12px",
+    fontFamily: "inherit",
+    transition: "color 0.2s",
+  }),
+  emptyState: {
+    textAlign: "center",
+    padding: "40px 20px",
+    color: colors.textDim,
+  },
+  listItem: {
+    background: colors.surface2,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 12,
+    padding: "14px 16px",
+    marginBottom: 10,
+    cursor: "pointer",
+    transition: "border-color 0.2s",
+  },
+  alertBox: (type) => ({
+    background: type === "success" ? colors.greenDim : type === "error" ? colors.redDim : colors.accentDim,
+    border: `1px solid ${type === "success" ? "rgba(16,185,129,0.3)" : type === "error" ? "rgba(239,68,68,0.3)" : "rgba(245,158,11,0.3)"}`,
+    borderRadius: 12,
+    padding: "14px 16px",
+    marginBottom: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    fontSize: 13,
+    color: type === "success" ? colors.green : type === "error" ? colors.red : colors.accent,
+    fontWeight: 600,
+  }),
+  summaryCard: (color) => ({
+    background: colors.surface2,
+    border: `1px solid ${colors.border}`,
+    borderRadius: 12,
+    padding: "14px 16px",
+    flex: 1,
+    minWidth: 100,
+  }),
+  summaryLabel: { fontSize: 10, color: colors.textDim, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" },
+  summaryValue: (color) => ({ fontSize: 20, fontWeight: 800, color: color || colors.textBright, marginTop: 4 }),
+};
+
+// ============================================================
+// MAIN APP
+// ============================================================
+function App() {
+  // Navigation
+  const [tab, setTab] = useState("inicio");
+  const [subPage, setSubPage] = useState(null);
+
+  // API state
+  const [apiConfig, setApiConfig] = useState(null);
+  const [apiLoading, setApiLoading] = useState(false);
+  const [apiMsg, setApiMsg] = useState(null);
+  const [histMaq, setHistMaq] = useState({});
+  const [histTok, setHistTok] = useState({});
+
+  // Cargar configuración desde Google Sheets al abrir
+  useEffect(() => {
+    if (API_URL === 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec') return; // modo demo sin API
+    setApiLoading(true);
+    apiGet('getConfig').then(data => {
+      if (data && data.sedes) {
+        // Sobrescribir CONFIG con datos de Sheets
+        CONFIG.tesoreros = data.tesoreros || CONFIG.tesoreros;
+        const newSedes = {};
+        for (const [k, v] of Object.entries(data.sedes)) {
+          newSedes[k] = { base: v.base || 1000000, operadores: v.operadores || [], maquinas: v.maquinas || [] };
+        }
+        CONFIG.sedes = newSedes;
+        setApiConfig(data); // trigger re-render
+      }
+      setApiLoading(false);
+    });
+  }, []);
+
+  // Cycle state
+  const [ciclo, setCiclo] = useState(null);
+  const [liquidaciones, setLiquidaciones] = useState([]);
+  const [maquinas, setMaquinas] = useState([]);
+  const [gastos, setGastos] = useState([]);
+  const [tokenReparto, setTokenReparto] = useState([]);
+  const [conteoFisico, setConteoFisico] = useState({ tokensFisicos: "", efectivoTotal: "" });
+
+  // Editing state
+  const [editingLiq, setEditingLiq] = useState(null);
+  const [editingMaq, setEditingMaq] = useState(null);
+  const [editingGasto, setEditingGasto] = useState(null);
+
+  const startCiclo = async (sede, tesorero) => {
+    // Cargar historiales de la sede desde API
+    if (API_URL !== 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec') {
+      setApiLoading(true);
+      const [hm, ht] = await Promise.all([
+        apiGet('getHistorialMaquinas', { sede }),
+        apiGet('getHistorialTokens', { sede }),
+      ]);
+      if (hm) { HISTORIAL_MAQUINAS[sede] = hm; setHistMaq(hm); }
+      if (ht) { HISTORIAL_TOKENS_OPERADOR[sede] = ht; setHistTok(ht); }
+      setApiLoading(false);
+    }
+
+    setCiclo({
+      id: Date.now(),
+      sede,
+      tesorero,
+      fecha: new Date().toLocaleDateString("es-CO"),
+      hora: new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
+      estado: "abierto",
+    });
+    setLiquidaciones([]);
+    setMaquinas([]);
+    setGastos([]);
+    setTokenReparto([]);
+    setConteoFisico({ tokensFisicos: "", efectivoTotal: "" });
+    setTab("liquidaciones");
+  };
+
+  const closeCiclo = async () => {
+    // Guardar todo en Google Sheets
+    if (API_URL !== 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec') {
+      setApiLoading(true);
+      setApiMsg("Guardando en Google Sheets...");
+      const result = await apiPost({
+        action: 'guardarCiclo',
+        ciclo,
+        liquidaciones,
+        maquinas,
+        conteoFisico,
+        gastos,
+        tokenReparto,
+      });
+      setApiLoading(false);
+      if (result?.success) {
+        setApiMsg("✅ Guardado exitosamente — ID: " + result.cicloId);
+      } else {
+        setApiMsg("⚠️ Error al guardar: " + (result?.error || "Sin conexión"));
+      }
+    }
+
+    setCiclo(prev => ({ ...prev, estado: "cerrado" }));
+    setTab("resumen");
+    setSubPage("resumen-final");
+  };
+
+  // Calculated totals
+  const sumaTokenDiaMaq = maquinas.reduce((s, m) => s + (Number(m.tokenDia) || 0), 0);
+  const sumaMoneDiaMaq = maquinas.reduce((s, m) => s + (Number(m.moneDia) || 0), 0);
+  const tokensFisicoGlobal = Number(conteoFisico.tokensFisicos) || 0;
+  const valorMonedasGlobal = Number(conteoFisico.efectivoTotal) || 0;
+
+  const totales = {
+    valorLiq: liquidaciones.reduce((s, l) => s + (Number(l.valor) || 0), 0),
+    qr: liquidaciones.reduce((s, l) => s + (Number(l.qr) || 0), 0),
+    devoluciones: liquidaciones.reduce((s, l) => s + (Number(l.devoluciones) || 0), 0),
+    tokens: liquidaciones.reduce((s, l) => s + (Number(l.tokensVendidos) || 0), 0),
+    efectivoLiq: liquidaciones.reduce((s, l) => s + (Number(l.efectivo) || 0), 0),
+    producidoMaq: maquinas.reduce((s, m) => s + (Number(m.producido) || 0), 0),
+    tokensMaq: tokensFisicoGlobal,
+    sumaTokenDiaMaq,
+    sumaMoneDiaMaq,
+    valorMonedasGlobal,
+    difTokensGlobal: sumaTokenDiaMaq - tokensFisicoGlobal,
+    difDineroGlobal: sumaMoneDiaMaq - valorMonedasGlobal,
+    totalGastos: gastos.reduce((s, g) => s + (Number(g.monto) || 0), 0),
+  };
+  totales.totalRecaudo = totales.efectivoLiq + valorMonedasGlobal;
+  totales.aConsignar = totales.efectivoLiq + valorMonedasGlobal - totales.totalGastos;
+
+  // Navigate helper
+  const goBack = () => {
+    if (subPage) { setSubPage(null); setEditingLiq(null); setEditingMaq(null); setEditingGasto(null); }
+  };
+
+  const currentTitle = () => {
+    if (subPage === "nueva-liq") return editingLiq?.id ? "Editar Liquidación" : "Nueva Liquidación";
+    if (subPage === "nuevo-conteo") return editingMaq?.id ? "Editar Máquina" : "Conteo de Máquina";
+    if (subPage === "conteo-fisico") return "Conteo Físico General";
+    if (subPage === "nuevo-gasto") return "Registrar Gasto";
+    if (subPage === "resumen-final") return "Resumen del Ciclo";
+    if (subPage === "reparto") return "Repartir Tokens";
+    if (tab === "inicio") return null;
+    if (tab === "liquidaciones") return "Liquidaciones";
+    if (tab === "maquinas") return "Conteo Máquinas";
+    if (tab === "resumen") return "Conciliación";
+    return null;
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  return (
+    <div style={S.app}>
+      {/* HEADER */}
+      {(ciclo || subPage) && (
+        <div style={S.header}>
+          {subPage && (
+            <button style={S.backBtn} onClick={goBack}>{Icons.back}</button>
+          )}
+          <div style={{ flex: 1 }}>
+            <h1 style={S.headerTitle}>{currentTitle() || "Panzer Carwash"}</h1>
+            {ciclo && !subPage && (
+              <p style={S.headerSub}>{ciclo.sede} · {ciclo.fecha} · {ciclo.tesorero}</p>
+            )}
+          </div>
+          {ciclo && (
+            <span style={S.badge(
+              ciclo.estado === "abierto" ? colors.green : colors.textDim,
+              ciclo.estado === "abierto" ? colors.greenDim : colors.surface2
+            )}>
+              {ciclo.estado === "abierto" ? "● Abierto" : "● Cerrado"}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* LOADING & API MESSAGES */}
+      {apiLoading && (
+        <div style={{ padding: "12px 20px", background: colors.accentDim, display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 16, height: 16, border: "2px solid " + colors.border, borderTopColor: colors.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <span style={{ fontSize: 13, color: colors.accent }}>{apiMsg || "Conectando con Google Sheets..."}</span>
+        </div>
+      )}
+      {apiMsg && !apiLoading && (
+        <div style={{ padding: "10px 20px", background: apiMsg.includes("✅") ? colors.greenDim : colors.redDim, fontSize: 12, color: apiMsg.includes("✅") ? colors.green : colors.red }}
+          onClick={() => setApiMsg(null)}>
+          {apiMsg} <span style={{ float: "right", cursor: "pointer" }}>✕</span>
+        </div>
+      )}
+
+      {/* CONTENT */}
+      <div style={S.page}>
+        {!ciclo && tab === "inicio" && (
+          <InicioPage onStart={startCiclo} />
+        )}
+
+        {ciclo && tab === "liquidaciones" && !subPage && (
+          <LiquidacionesList
+            items={liquidaciones}
+            onAdd={() => { setEditingLiq({}); setSubPage("nueva-liq"); }}
+            onEdit={(l) => { setEditingLiq(l); setSubPage("nueva-liq"); }}
+            onDelete={(id) => setLiquidaciones(prev => prev.filter(l => l.id !== id))}
+          />
+        )}
+
+        {ciclo && subPage === "nueva-liq" && (
+          <LiquidacionForm
+            initial={editingLiq}
+            index={editingLiq?.id ? liquidaciones.findIndex(l => l.id === editingLiq.id) + 1 : liquidaciones.length + 1}
+            sede={ciclo.sede}
+            onSave={(liq) => {
+              if (liq.id) {
+                setLiquidaciones(prev => prev.map(l => l.id === liq.id ? liq : l));
+              } else {
+                setLiquidaciones(prev => [...prev, { ...liq, id: Date.now() }]);
+              }
+              setSubPage(null); setEditingLiq(null);
+            }}
+          />
+        )}
+
+        {ciclo && tab === "maquinas" && !subPage && (
+          <MaquinasList
+            items={maquinas}
+            conteoFisico={conteoFisico}
+            totales={totales}
+            onAdd={() => { setEditingMaq({}); setSubPage("nuevo-conteo"); }}
+            onEdit={(m) => { setEditingMaq(m); setSubPage("nuevo-conteo"); }}
+            onDelete={(id) => setMaquinas(prev => prev.filter(m => m.id !== id))}
+            onConteoFisico={() => setSubPage("conteo-fisico")}
+          />
+        )}
+
+        {ciclo && subPage === "nuevo-conteo" && (
+          <MaquinaForm
+            initial={editingMaq}
+            sede={ciclo.sede}
+            maquinasYaRegistradas={maquinas.map(m => m.nombre)}
+            onSave={(maq) => {
+              if (maq.id) {
+                setMaquinas(prev => prev.map(m => m.id === maq.id ? maq : m));
+              } else {
+                setMaquinas(prev => [...prev, { ...maq, id: Date.now() }]);
+              }
+              setSubPage(null); setEditingMaq(null);
+            }}
+          />
+        )}
+
+        {ciclo && subPage === "conteo-fisico" && (
+          <ConteoFisicoGlobal
+            maquinas={maquinas}
+            conteoFisico={conteoFisico}
+            totales={totales}
+            onSave={(cf) => { setConteoFisico(cf); setSubPage(null); }}
+          />
+        )}
+
+        {ciclo && tab === "resumen" && !subPage && (
+          <ResumenPage
+            ciclo={ciclo}
+            totales={totales}
+            liquidaciones={liquidaciones}
+            maquinas={maquinas}
+            gastos={gastos}
+            onAddGasto={() => setSubPage("nuevo-gasto")}
+            onDeleteGasto={(id) => setGastos(prev => prev.filter(g => g.id !== id))}
+            onReparto={() => setSubPage("reparto")}
+            onClose={closeCiclo}
+          />
+        )}
+
+        {ciclo && subPage === "nuevo-gasto" && (
+          <GastoForm
+            onSave={(g) => {
+              setGastos(prev => [...prev, { ...g, id: Date.now() }]);
+              setSubPage(null);
+            }}
+          />
+        )}
+
+        {ciclo && subPage === "reparto" && (
+          <RepartoTokens
+            liquidaciones={liquidaciones}
+            tokensMaq={totales.tokensMaq}
+            sede={ciclo.sede}
+            gastos={gastos}
+            onSave={(reparto) => { setTokenReparto(reparto); setSubPage(null); }}
+          />
+        )}
+
+        {ciclo && subPage === "resumen-final" && (
+          <ResumenFinal
+            ciclo={ciclo}
+            totales={totales}
+            liquidaciones={liquidaciones}
+            maquinas={maquinas}
+            gastos={gastos}
+            tokenReparto={tokenReparto}
+            onNewCiclo={() => {
+              setCiclo(null); setLiquidaciones([]); setMaquinas([]);
+              setGastos([]); setTokenReparto([]);
+              setConteoFisico({ tokensFisicos: "", efectivoTotal: "" });
+              setTab("inicio"); setSubPage(null);
+            }}
+          />
+        )}
+      </div>
+
+      {/* BOTTOM NAVBAR */}
+      {ciclo && ciclo.estado === "abierto" && !subPage && (
+        <div style={S.navbar}>
+          {[
+            { id: "liquidaciones", icon: Icons.receipt, label: "Liquidaciones" },
+            { id: "maquinas", icon: Icons.cog, label: "Máquinas" },
+            { id: "resumen", icon: Icons.chart, label: "Conciliación" },
+          ].map(item => (
+            <button key={item.id} style={S.navItem(tab === item.id)} onClick={() => setTab(item.id)}>
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// INICIO PAGE
+// ============================================================
+function InicioPage({ onStart }) {
+  const [sede, setSede] = useState("");
+  const [tesorero, setTesorero] = useState("");
+
+  return (
+    <div>
+      <div style={{ textAlign: "center", padding: "30px 0 24px" }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>🔧</div>
+        <h1 style={{ fontSize: 26, fontWeight: 800, color: colors.textBright, margin: "0 0 6px" }}>
+          Panzer <span style={{ color: colors.accent }}>Carwash</span>
+        </h1>
+        <p style={{ fontSize: 13, color: colors.textDim }}>Sistema de Recaudo Digital</p>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>📋 Iniciar Nuevo Ciclo</div>
+
+        <label style={S.label}>Sede</label>
+        <select style={S.select} value={sede} onChange={e => setSede(e.target.value)}>
+          <option value="">Seleccionar sede...</option>
+          {SEDES.map(s => <option key={s} value={s}>{s}</option>)}
+        </select>
+
+        <label style={S.label}>Tesorero</label>
+        <select style={S.select} value={tesorero} onChange={e => setTesorero(e.target.value)}>
+          <option value="">Seleccionar tesorero...</option>
+          {TESOREROS.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+
+        <div style={{ ...S.row, marginBottom: 14 }}>
+          <div style={S.col}>
+            <label style={S.label}>Fecha</label>
+            <div style={{ ...S.input, background: colors.surface3, color: colors.textDim, marginBottom: 0 }}>
+              {new Date().toLocaleDateString("es-CO")}
+            </div>
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>Hora</label>
+            <div style={{ ...S.input, background: colors.surface3, color: colors.textDim, marginBottom: 0 }}>
+              {new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+            </div>
+          </div>
+        </div>
+
+        <button
+          style={{ ...S.btnPrimary, opacity: sede && tesorero ? 1 : 0.4 }}
+          disabled={!sede || !tesorero}
+          onClick={() => onStart(sede, tesorero)}
+        >
+          🚀 Iniciar Recaudo
+        </button>
+      </div>
+
+      <div style={{ ...S.card, background: colors.accentDim, borderColor: "rgba(245,158,11,0.2)" }}>
+        <div style={{ fontSize: 12, color: colors.accent, lineHeight: 1.7 }}>
+          <strong>💡 Tip:</strong> Este prototipo funciona 100% local. En producción, 
+          los datos se guardan automáticamente en Google Sheets en tiempo real.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// LIQUIDACIONES LIST
+// ============================================================
+function LiquidacionesList({ items, onAdd, onEdit, onDelete }) {
+  const total = items.reduce((s, l) => s + (Number(l.efectivo) || 0), 0);
+
+  return (
+    <div>
+      <div style={{ ...S.row, marginBottom: 16, gap: 8 }}>
+        <div style={S.summaryCard(colors.accent)}>
+          <div style={S.summaryLabel}>Liquidaciones</div>
+          <div style={S.summaryValue(colors.accent)}>{items.length}</div>
+        </div>
+        <div style={S.summaryCard(colors.green)}>
+          <div style={S.summaryLabel}>Total Efectivo</div>
+          <div style={{ ...S.summaryValue(colors.green), fontSize: 16 }}>{fmt(total)}</div>
+        </div>
+      </div>
+
+      {items.length === 0 && (
+        <div style={S.emptyState}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>📝</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: colors.textBright, marginBottom: 6 }}>Sin liquidaciones</div>
+          <div style={{ fontSize: 13 }}>Registra la primera liquidación del ciclo</div>
+        </div>
+      )}
+
+      {items.map((l, i) => (
+        <div key={l.id} style={S.listItem} onClick={() => onEdit(l)}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>
+                Liquidación {i + 1}
+              </div>
+              <div style={{ fontSize: 12, color: colors.textDim, marginTop: 2 }}>
+                {l.operador || "Sin operador"} · Recibo #{l.numRecibo || "—"} · {fmtNum(l.tokensVendidos)} tokens
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.green }}>{fmt(l.efectivo)}</div>
+              {l.descuadre !== undefined && l.descuadre !== 0 && (
+                <span style={S.badge(colors.red, colors.redDim)}>
+                  Δ {fmt(l.descuadre)}
+                </span>
+              )}
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+            <button style={{ ...S.btnDanger, padding: "6px 10px", fontSize: 11 }}
+              onClick={(e) => { e.stopPropagation(); onDelete(l.id); }}>
+              {Icons.trash} Eliminar
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <button style={{ ...S.btnPrimary, marginTop: 8 }} onClick={onAdd}>
+        {Icons.plus} Agregar Liquidación
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// LIQUIDACION FORM
+// ============================================================
+function LiquidacionForm({ initial, index, sede, onSave }) {
+  const [f, setF] = useState({
+    operador: "", numRecibo: "", tokensBase: "", tokensVendidos: "",
+    valor: "", qr: "", devoluciones: "", devTokens: "", observaciones: "",
+    efectivoContado: "",
+    ...initial,
+  });
+
+  const upd = (key, val) => setF(prev => ({ ...prev, [key]: val }));
+  const operadoresSede = getOperadores(sede);
+
+  const efectivoEsperado = (Number(f.valor) || 0) - (Number(f.qr) || 0) - (Number(f.devoluciones) || 0);
+  const tokensRestantes = (Number(f.tokensBase) || 0) - (Number(f.tokensVendidos) || 0) - (Number(f.devTokens) || 0);
+  const descuadre = f.efectivoContado ? (Number(f.efectivoContado) || 0) - efectivoEsperado : 0;
+
+  const handleSave = () => {
+    onSave({
+      ...f,
+      id: f.id || null,
+      efectivo: efectivoEsperado,
+      descuadre: descuadre,
+      tokensRestantes,
+    });
+  };
+
+  return (
+    <div>
+      <div style={S.card}>
+        <div style={S.cardTitle}>👤 Información del Turno</div>
+        <label style={S.label}>Operador</label>
+        <select style={S.select} value={f.operador} onChange={e => upd("operador", e.target.value)}>
+          <option value="">Seleccionar operador...</option>
+          {operadoresSede.map(op => <option key={op} value={op}>{op}</option>)}
+        </select>
+
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={S.label}>Nº Recibo</label>
+            <input style={S.input} placeholder="#89-0092" value={f.numRecibo} onChange={e => upd("numRecibo", e.target.value)} />
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>Liquidación #</label>
+            <div style={{ ...S.input, background: colors.surface3, color: colors.accent, fontWeight: 700 }}>{index}</div>
+          </div>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>🪙 Tokens</div>
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={S.label}>Base (inicio)</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="0" value={f.tokensBase} onChange={e => upd("tokensBase", e.target.value)} />
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>Vendidos</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="0" value={f.tokensVendidos} onChange={e => upd("tokensVendidos", e.target.value)} />
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>Dev. Tokens</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="0" value={f.devTokens} onChange={e => upd("devTokens", e.target.value)} />
+          </div>
+        </div>
+        <div style={{ ...S.alertBox("info"), margin: 0 }}>
+          🪙 Tokens restantes: <strong style={{ marginLeft: 4 }}>{tokensRestantes}</strong>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>💵 Valores</div>
+        <label style={S.label}>Valor Total (Productos + Tokens)</label>
+        <input style={S.input} type="number" inputMode="numeric" placeholder="$0" value={f.valor} onChange={e => upd("valor", e.target.value)} />
+
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={S.label}>Valor QR</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="$0" value={f.qr} onChange={e => upd("qr", e.target.value)} />
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>Devoluciones $</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="$0" value={f.devoluciones} onChange={e => upd("devoluciones", e.target.value)} />
+          </div>
+        </div>
+
+        <div style={S.divider} />
+
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Efectivo esperado</span>
+          <span style={{ ...S.resultValue, color: colors.green }}>{fmt(efectivoEsperado)}</span>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>✅ Verificación de Efectivo</div>
+        <label style={S.label}>Efectivo contado físicamente</label>
+        <input
+          style={{ ...S.input, borderColor: descuadre !== 0 && f.efectivoContado ? colors.red : f.efectivoContado ? colors.green : colors.border, borderWidth: 2 }}
+          type="number" inputMode="numeric" placeholder="Ingresa el monto contado"
+          value={f.efectivoContado} onChange={e => upd("efectivoContado", e.target.value)}
+        />
+
+        {f.efectivoContado && descuadre === 0 && (
+          <div style={S.alertBox("success")}>
+            {Icons.check} ¡Cuadra perfecto! El efectivo coincide.
+          </div>
+        )}
+
+        {f.efectivoContado && descuadre !== 0 && (
+          <div style={S.alertBox("error")}>
+            {Icons.alert} Descuadre de {fmt(Math.abs(descuadre))} ({descuadre > 0 ? "sobrante" : "faltante"})
+          </div>
+        )}
+      </div>
+
+      <div style={S.card}>
+        <label style={S.label}>Observaciones</label>
+        <textarea
+          style={{ ...S.input, minHeight: 70, resize: "vertical" }}
+          placeholder="Notas adicionales..."
+          value={f.observaciones}
+          onChange={e => upd("observaciones", e.target.value)}
+        />
+      </div>
+
+      <button style={S.btnPrimary} onClick={handleSave}>
+        {Icons.save} Guardar Liquidación
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// MAQUINAS LIST (con conteo físico global)
+// ============================================================
+function MaquinasList({ items, conteoFisico, totales, onAdd, onEdit, onDelete, onConteoFisico }) {
+  const totalProd = items.reduce((s, m) => s + (Number(m.producido) || 0), 0);
+  const totalTokenDia = items.reduce((s, m) => s + (Number(m.tokenDia) || 0), 0);
+  const totalMoneDia = items.reduce((s, m) => s + (Number(m.moneDia) || 0), 0);
+  const tieneConteoFisico = conteoFisico.tokensFisicos !== "" || conteoFisico.efectivoTotal !== "";
+
+  return (
+    <div>
+      {/* Summary cards */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={S.summaryCard()}>
+          <div style={S.summaryLabel}>Máquinas</div>
+          <div style={S.summaryValue(colors.blue)}>{items.length}</div>
+        </div>
+        <div style={S.summaryCard()}>
+          <div style={S.summaryLabel}>Producido</div>
+          <div style={{ ...S.summaryValue(colors.green), fontSize: 14 }}>{fmt(totalProd)}</div>
+        </div>
+        <div style={S.summaryCard()}>
+          <div style={S.summaryLabel}>Σ TOKEN_DIA</div>
+          <div style={S.summaryValue(colors.accent)}>{fmtNum(totalTokenDia)}</div>
+        </div>
+      </div>
+
+      {/* Machine list */}
+      {items.length === 0 && (
+        <div style={S.emptyState}>
+          <div style={{ fontSize: 48, marginBottom: 12 }}>🔧</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: colors.textBright, marginBottom: 6 }}>Sin conteos</div>
+          <div style={{ fontSize: 13 }}>Registra los contadores de cada máquina</div>
+        </div>
+      )}
+
+      {items.map((m) => (
+        <div key={m.id} style={S.listItem} onClick={() => onEdit(m)}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{m.nombre}</div>
+              <div style={{ fontSize: 12, color: colors.textDim, marginTop: 2 }}>
+                TOKEN_DIA: {fmtNum(m.tokenDia)} · MONE_DIA: {fmt(m.moneDia)}
+              </div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.green }}>{fmt(m.producido)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+            <button style={{ ...S.btnDanger, padding: "6px 10px", fontSize: 11 }}
+              onClick={(e) => { e.stopPropagation(); onDelete(m.id); }}>
+              {Icons.trash} Eliminar
+            </button>
+          </div>
+        </div>
+      ))}
+
+      <button style={{ ...S.btnPrimary, marginTop: 8 }} onClick={onAdd}>
+        {Icons.plus} Agregar Conteo de Máquina
+      </button>
+
+      {/* Conteo Físico Global */}
+      {items.length > 0 && (
+        <>
+          <div style={{ height: 1, background: colors.border, margin: "20px 0" }} />
+
+          <div style={{
+            background: tieneConteoFisico ? "rgba(16,185,129,0.06)" : "rgba(245,158,11,0.06)",
+            border: `1px solid ${tieneConteoFisico ? "rgba(16,185,129,0.25)" : "rgba(245,158,11,0.25)"}`,
+            borderRadius: 14,
+            padding: 20,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+              <div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: colors.textBright, display: "flex", alignItems: "center", gap: 8 }}>
+                  🔍 Conteo Físico General
+                  {tieneConteoFisico ? (
+                    <span style={S.badge(colors.green, colors.greenDim)}>✓ Registrado</span>
+                  ) : (
+                    <span style={S.badge(colors.accent, colors.accentDim)}>Pendiente</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4, lineHeight: 1.5 }}>
+                  Conteo total de tokens y monedas después de vaciar todas las máquinas
+                </div>
+              </div>
+            </div>
+
+            {tieneConteoFisico && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={S.resultRow}>
+                  <span style={S.resultLabel}>Tokens físicos contados</span>
+                  <span style={S.resultValue}>{fmtNum(conteoFisico.tokensFisicos)}</span>
+                </div>
+                <div style={{ ...S.resultRow, borderBottom: "none" }}>
+                  <span style={S.resultLabel}>Efectivo total contado</span>
+                  <span style={{ ...S.resultValue, color: colors.green }}>{fmt(conteoFisico.efectivoTotal)}</span>
+                </div>
+
+                {/* Comparación automática */}
+                <div style={{ marginTop: 10 }}>
+                  {totales.difTokensGlobal === 0 ? (
+                    <div style={S.alertBox("success")}>{Icons.check} Tokens cuadran (Σ TOKEN_DIA = Físico)</div>
+                  ) : (
+                    <div style={S.alertBox("error")}>{Icons.alert} Diferencia de {Math.abs(totales.difTokensGlobal)} tokens · Σ TOKEN_DIA: {fmtNum(totales.sumaTokenDiaMaq)} vs Físico: {fmtNum(conteoFisico.tokensFisicos)}</div>
+                  )}
+                  {totales.difDineroGlobal === 0 ? (
+                    <div style={S.alertBox("success")}>{Icons.check} Efectivo cuadra (Σ MONE_DIA = Conteo)</div>
+                  ) : (
+                    <div style={S.alertBox("error")}>{Icons.alert} Diferencia de {fmt(Math.abs(totales.difDineroGlobal))} · Σ MONE_DIA: {fmt(totales.sumaMoneDiaMaq)} vs Conteo: {fmt(conteoFisico.efectivoTotal)}</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <button
+              style={tieneConteoFisico ? S.btnSecondary : { ...S.btnPrimary, background: `linear-gradient(135deg, ${colors.blue}, #2563eb)`, color: "#fff" }}
+              onClick={onConteoFisico}
+            >
+              🔍 {tieneConteoFisico ? "Editar Conteo Físico" : "Registrar Conteo Físico"}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+// ============================================================
+// MAQUINA FORM (con auto-carga de datos del ciclo anterior)
+// ============================================================
+function MaquinaForm({ initial, sede, maquinasYaRegistradas, onSave }) {
+  const [f, setF] = useState({
+    nombre: "", genAnterior: "", genActual: "", genTokenAnterior: "", genTokenActual: "",
+    tokenDia: "", moneDia: "",
+    historialCargado: false, cicloAnteriorFecha: "",
+    ...initial,
+  });
+
+  const upd = (key, val) => setF(prev => ({ ...prev, [key]: val }));
+
+  // Auto-cargar datos del ciclo anterior cuando se selecciona una máquina
+  const handleSelectMaquina = (nombre) => {
+    const historial = HISTORIAL_MAQUINAS[sede]?.[nombre];
+    if (historial && !initial?.id) {
+      setF(prev => ({
+        ...prev,
+        nombre,
+        genAnterior: historial.gen,
+        genTokenAnterior: historial.genToken,
+        historialCargado: true,
+        cicloAnteriorFecha: historial.cicloFecha,
+      }));
+    } else {
+      upd("nombre", nombre);
+    }
+  };
+
+  const producido = (Number(f.genActual) || 0) - (Number(f.genAnterior) || 0);
+  const producidoTokens = (Number(f.genTokenActual) || 0) - (Number(f.genTokenAnterior) || 0);
+
+  // Filtrar máquinas ya registradas (excepto la que se está editando)
+  const maquinasDisponibles = getMaquinas(sede).filter(
+    m => !maquinasYaRegistradas?.includes(m) || m === initial?.nombre
+  );
+
+  const handleSave = () => {
+    onSave({ ...f, id: f.id || null, producido, producidoTokens });
+  };
+
+  const readOnlyStyle = {
+    ...S.input,
+    background: "rgba(16,185,129,0.08)",
+    borderColor: "rgba(16,185,129,0.25)",
+    color: colors.green,
+    fontWeight: 700,
+    cursor: "default",
+  };
+
+  return (
+    <div>
+      <div style={S.card}>
+        <div style={S.cardTitle}>🔧 Máquina</div>
+        <label style={S.label}>Nombre / Identificación</label>
+        <select style={S.select} value={f.nombre} onChange={e => handleSelectMaquina(e.target.value)}>
+          <option value="">Seleccionar máquina...</option>
+          {maquinasDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+
+        {f.historialCargado && (
+          <div style={{
+            background: "rgba(16,185,129,0.08)",
+            border: "1px solid rgba(16,185,129,0.2)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 2,
+          }}>
+            <span style={{ fontSize: 16 }}>✅</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: colors.green }}>
+                Datos del ciclo anterior cargados automáticamente
+              </div>
+              <div style={{ fontSize: 11, color: colors.textDim, marginTop: 2 }}>
+                Último conteo: {f.cicloAnteriorFecha} · Sede: {sede}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {f.nombre && !f.historialCargado && !initial?.id && (
+          <div style={{
+            background: "rgba(245,158,11,0.08)",
+            border: "1px solid rgba(245,158,11,0.2)",
+            borderRadius: 10,
+            padding: "10px 14px",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginTop: 2,
+          }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <div style={{ fontSize: 12, color: colors.accent }}>
+              Sin historial previo para esta máquina. Ingresa los contadores anteriores manualmente.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={S.card}>
+        <div style={{ ...S.cardTitle, justifyContent: "space-between" }}>
+          <span>📊 Contadores Generales (acumulados)</span>
+        </div>
+
+        {/* GEN - Dinero acumulado */}
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={{ ...S.label, display: "flex", alignItems: "center", gap: 6 }}>
+              GEN anterior $
+              {f.historialCargado && (
+                <span style={{
+                  fontSize: 9, background: colors.greenDim, color: colors.green,
+                  padding: "2px 6px", borderRadius: 8, fontWeight: 700,
+                }}>AUTO</span>
+              )}
+            </label>
+            {f.historialCargado ? (
+              <div style={readOnlyStyle}>{fmt(f.genAnterior)}</div>
+            ) : (
+              <input style={S.input} type="number" inputMode="numeric" placeholder="0"
+                value={f.genAnterior} onChange={e => upd("genAnterior", e.target.value)} />
+            )}
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>GEN actual $ <span style={{ color: colors.accent, fontSize: 9 }}>⬅ INGRESAR</span></label>
+            <input style={{ ...S.input, borderColor: colors.accent, borderWidth: 2 }}
+              type="number" inputMode="numeric" placeholder="Leer de la máquina"
+              value={f.genActual} onChange={e => upd("genActual", e.target.value)} />
+          </div>
+        </div>
+
+        {producido > 0 && (
+          <div style={{ ...S.resultRow, borderBottom: "none", background: colors.greenDim, borderRadius: 8, padding: "10px 14px", marginTop: 4 }}>
+            <span style={{ ...S.resultLabel, color: colors.green }}>💰 Producido este ciclo</span>
+            <span style={{ ...S.resultValue, color: colors.green }}>{fmt(producido)}</span>
+          </div>
+        )}
+
+        <div style={S.divider} />
+
+        {/* GEN_TOKEN - Tokens acumulados */}
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={{ ...S.label, display: "flex", alignItems: "center", gap: 6 }}>
+              GEN_TOKEN anterior
+              {f.historialCargado && (
+                <span style={{
+                  fontSize: 9, background: colors.greenDim, color: colors.green,
+                  padding: "2px 6px", borderRadius: 8, fontWeight: 700,
+                }}>AUTO</span>
+              )}
+            </label>
+            {f.historialCargado ? (
+              <div style={readOnlyStyle}>{fmtNum(f.genTokenAnterior)}</div>
+            ) : (
+              <input style={S.input} type="number" inputMode="numeric" placeholder="0"
+                value={f.genTokenAnterior} onChange={e => upd("genTokenAnterior", e.target.value)} />
+            )}
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>GEN_TOKEN actual <span style={{ color: colors.accent, fontSize: 9 }}>⬅ INGRESAR</span></label>
+            <input style={{ ...S.input, borderColor: colors.accent, borderWidth: 2 }}
+              type="number" inputMode="numeric" placeholder="Leer de la máquina"
+              value={f.genTokenActual} onChange={e => upd("genTokenActual", e.target.value)} />
+          </div>
+        </div>
+
+        {producidoTokens > 0 && (
+          <div style={{ ...S.resultRow, borderBottom: "none", background: colors.accentDim, borderRadius: 8, padding: "10px 14px", marginTop: 4 }}>
+            <span style={{ ...S.resultLabel, color: colors.accent }}>🪙 Tokens producidos</span>
+            <span style={{ ...S.resultValue, color: colors.accent }}>{fmtNum(producidoTokens)}</span>
+          </div>
+        )}
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>🔄 Contadores de Ciclo (reiniciables)</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 12, lineHeight: 1.5 }}>
+          Estos valores se leen directamente de la pantalla de la máquina (TOKEN_DIA y MONE_DIA).
+        </div>
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={S.label}>TOKEN_DIA</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="0" value={f.tokenDia} onChange={e => upd("tokenDia", e.target.value)} />
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>MONE_DIA $</label>
+            <input style={S.input} type="number" inputMode="numeric" placeholder="0" value={f.moneDia} onChange={e => upd("moneDia", e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      <button style={{ ...S.btnPrimary, opacity: f.nombre && f.genActual ? 1 : 0.4 }}
+        disabled={!f.nombre || !f.genActual}
+        onClick={handleSave}>
+        {Icons.save} Guardar Conteo
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// GASTO FORM
+// ============================================================
+function GastoForm({ onSave }) {
+  const [concepto, setConcepto] = useState("");
+  const [monto, setMonto] = useState("");
+
+  return (
+    <div>
+      <div style={S.card}>
+        <div style={S.cardTitle}>💸 Gasto de Caja Menor</div>
+        <label style={S.label}>Concepto</label>
+        <input style={S.input} placeholder="Ej: Shampoo, reparación..." value={concepto} onChange={e => setConcepto(e.target.value)} />
+        <label style={S.label}>Monto</label>
+        <input style={S.input} type="number" inputMode="numeric" placeholder="$0" value={monto} onChange={e => setMonto(e.target.value)} />
+      </div>
+      <button style={{ ...S.btnPrimary, opacity: concepto && monto ? 1 : 0.4 }}
+        disabled={!concepto || !monto}
+        onClick={() => onSave({ concepto, monto })}>
+        {Icons.save} Guardar Gasto
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// CONTEO FÍSICO GLOBAL (tokens + monedas de TODAS las máquinas mezcladas)
+// ============================================================
+function ConteoFisicoGlobal({ maquinas, conteoFisico, totales, onSave }) {
+  const [f, setF] = useState({
+    tokensFisicos: conteoFisico.tokensFisicos || "",
+    efectivoTotal: conteoFisico.efectivoTotal || "",
+  });
+
+  const upd = (key, val) => setF(prev => ({ ...prev, [key]: val }));
+
+  const efectivoTotal = Number(f.efectivoTotal) || 0;
+  const tokensFisicos = Number(f.tokensFisicos) || 0;
+  const difTokens = totales.sumaTokenDiaMaq - tokensFisicos;
+  const difDinero = totales.sumaMoneDiaMaq - efectivoTotal;
+
+  return (
+    <div>
+      {/* Resumen de contadores por máquina */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>📊 Resumen Contadores (Σ de todas las máquinas)</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.5 }}>
+          Estos son los totales que deben coincidir con el conteo físico de abajo.
+        </div>
+
+        {maquinas.map(m => (
+          <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${colors.border}`, fontSize: 13 }}>
+            <span style={{ color: colors.textDim }}>{m.nombre}</span>
+            <div style={{ display: "flex", gap: 16 }}>
+              <span style={{ color: colors.accent }}>{fmtNum(m.tokenDia)} tok</span>
+              <span style={{ color: colors.green, minWidth: 90, textAlign: "right" }}>{fmt(m.moneDia)}</span>
+            </div>
+          </div>
+        ))}
+
+        <div style={{ display: "flex", justifyContent: "space-between", padding: "12px 0 4px", fontSize: 14, fontWeight: 700 }}>
+          <span style={{ color: colors.textBright }}>TOTAL ESPERADO</span>
+          <div style={{ display: "flex", gap: 16 }}>
+            <span style={{ color: colors.accent }}>{fmtNum(totales.sumaTokenDiaMaq)} tok</span>
+            <span style={{ color: colors.green, minWidth: 90, textAlign: "right" }}>{fmt(totales.sumaMoneDiaMaq)}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Conteo físico real */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🔍 Conteo Físico Real</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.5 }}>
+          Ingresa el conteo total después de vaciar y mezclar el contenido de todas las máquinas.
+        </div>
+
+        <label style={S.label}>Total tokens físicos contados</label>
+        <input
+          style={{ ...S.input, borderColor: colors.accent, borderWidth: 2, fontSize: 18, fontWeight: 700, textAlign: "center", padding: "16px 14px" }}
+          type="number" inputMode="numeric"
+          placeholder="Contar todos los tokens"
+          value={f.tokensFisicos}
+          onChange={e => upd("tokensFisicos", e.target.value)}
+        />
+
+        <div style={S.divider} />
+
+        <label style={S.label}>Efectivo total contado (monedas)</label>
+        <input
+          style={{ ...S.input, borderColor: colors.green, borderWidth: 2, fontSize: 18, fontWeight: 700, textAlign: "center", padding: "16px 14px" }}
+          type="number" inputMode="numeric"
+          placeholder="Total en efectivo de las monedas"
+          value={f.efectivoTotal}
+          onChange={e => upd("efectivoTotal", e.target.value)}
+        />
+      </div>
+
+      {/* Comparación automática */}
+      {(f.tokensFisicos || f.efectivoTotal) && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>⚖️ Comparación Automática</div>
+
+          <div style={{ ...S.resultRow }}>
+            <span style={S.resultLabel}>Σ TOKEN_DIA (contadores)</span>
+            <span style={S.resultValue}>{fmtNum(totales.sumaTokenDiaMaq)}</span>
+          </div>
+          <div style={{ ...S.resultRow }}>
+            <span style={S.resultLabel}>Tokens físicos contados</span>
+            <span style={S.resultValue}>{fmtNum(tokensFisicos)}</span>
+          </div>
+          <div style={{ marginTop: 8, marginBottom: 12 }}>
+            {difTokens === 0 ? (
+              <div style={S.alertBox("success")}>{Icons.check} Tokens cuadran perfectamente</div>
+            ) : (
+              <div style={S.alertBox("error")}>
+                {Icons.alert} Diferencia de {Math.abs(difTokens)} tokens ({difTokens > 0 ? "faltan físicos" : "sobran físicos"})
+              </div>
+            )}
+          </div>
+
+          <div style={S.divider} />
+
+          <div style={{ ...S.resultRow }}>
+            <span style={S.resultLabel}>Σ MONE_DIA (contadores)</span>
+            <span style={S.resultValue}>{fmt(totales.sumaMoneDiaMaq)}</span>
+          </div>
+          <div style={{ ...S.resultRow }}>
+            <span style={S.resultLabel}>Efectivo contado</span>
+            <span style={S.resultValue}>{fmt(efectivoTotal)}</span>
+          </div>
+          <div style={{ marginTop: 8 }}>
+            {difDinero === 0 ? (
+              <div style={S.alertBox("success")}>{Icons.check} Efectivo cuadra perfectamente</div>
+            ) : (
+              <div style={S.alertBox("error")}>
+                {Icons.alert} Diferencia de {fmt(Math.abs(difDinero))} ({difDinero > 0 ? "falta dinero" : "sobra dinero"})
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <button style={S.btnPrimary} onClick={() => onSave(f)}>
+        {Icons.save} Guardar Conteo Físico
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// REPARTO TOKENS + BASE EFECTIVO
+// ============================================================
+function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
+  const operadores = [...new Set(liquidaciones.map(l => l.operador).filter(Boolean))];
+  const [reparto, setReparto] = useState(operadores.map(op => ({ nombre: op, tokens: "" })));
+
+  // Base de efectivo
+  const baseConfigurada = getBase(sede);
+  const [baseRecogida, setBaseRecogida] = useState("");
+  const [baseNueva, setBaseNueva] = useState(String(baseConfigurada));
+
+  const totalGastos = gastos.reduce((s, g) => s + (Number(g.monto) || 0), 0);
+
+  // Tokens
+  const tokensRestantesOps = liquidaciones.reduce((s, l) => s + (Number(l.tokensRestantes) || 0), 0);
+  const totalTokensRepartido = reparto.reduce((s, r) => s + (Number(r.tokens) || 0), 0);
+
+  // Trazabilidad por operador: cruzar historial con liquidaciones de este ciclo
+  const historialSede = HISTORIAL_TOKENS_OPERADOR[sede] || {};
+  const operadorData = operadores.map(nombre => {
+    const normalizado = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
+    const historial = historialSede[normalizado] || historialSede[nombre] || null;
+    const liqsDeEsteOp = liquidaciones.filter(l => l.operador === nombre);
+    const vendidosEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.tokensVendidos) || 0), 0);
+    const devTokensEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.devTokens) || 0), 0);
+    const saldoEsperado = historial ? historial.saldo - vendidosEsteC - devTokensEsteC : null;
+    return { nombre, historial, vendidosEsteC, devTokensEsteC, saldoEsperado };
+  });
+
+  const totalSaldoAnterior = operadorData.reduce((s, o) => s + (o.historial?.saldo || 0), 0);
+  const totalVendidosCiclo = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
+  const totalDevTokensCiclo = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
+  const totalSaldoEsperado = operadorData.reduce((s, o) => s + Math.max(o.saldoEsperado || 0, 0), 0);
+  const totalTokensDisponible = tokensMaq + totalSaldoEsperado;
+  const tokensRestante = totalTokensDisponible - totalTokensRepartido;
+
+  // Detección de pérdida: tokens que deberían existir pero no están
+  const tokensPerdidos = Math.max(0, totalSaldoAnterior - totalVendidosCiclo - totalDevTokensCiclo - tokensMaq - totalSaldoEsperado);
+
+  // Base: diferencia entre lo recogido y los gastos
+  const baseRecogidaNum = Number(baseRecogida) || 0;
+  const baseNuevaNum = Number(baseNueva) || 0;
+  const baseEsperada = baseConfigurada - totalGastos;
+  const difBase = baseRecogidaNum - baseEsperada;
+
+  const handleSave = () => {
+    onSave({
+      operadores: reparto,
+      baseRecogida: baseRecogidaNum,
+      baseNueva: baseNuevaNum,
+      baseConfigurada,
+      totalGastosDeSede: totalGastos,
+    });
+  };
+
+  return (
+    <div>
+      {/* ===== SECCIÓN 1: BASE DE EFECTIVO ===== */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>💵 Base de Efectivo — {sede}</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.6 }}>
+          Se recoge la base anterior completa y se deja una nueva. La base sirve para gastos de sede y para menudear billetes por monedas.
+        </div>
+
+        {/* Base configurada */}
+        <div style={{
+          background: colors.surface2, borderRadius: 10, padding: "12px 16px",
+          display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14,
+          border: `1px solid ${colors.border}`,
+        }}>
+          <div>
+            <div style={{ fontSize: 11, color: colors.textDim, fontWeight: 600, letterSpacing: 0.5, textTransform: "uppercase" }}>Base configurada para esta sede</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: colors.accent, marginTop: 2 }}>{fmt(baseConfigurada)}</div>
+          </div>
+          <span style={{
+            fontSize: 9, background: colors.accentDim, color: colors.accent,
+            padding: "3px 8px", borderRadius: 8, fontWeight: 700,
+          }}>CONFIGURADO</span>
+        </div>
+
+        {/* Base recogida */}
+        <label style={S.label}>💰 Efectivo recogido de la base anterior</label>
+        <input
+          style={{ ...S.input, borderColor: colors.accent, borderWidth: 2, fontSize: 16, fontWeight: 700, textAlign: "center" }}
+          type="number" inputMode="numeric"
+          placeholder="¿Cuánto queda de la base anterior?"
+          value={baseRecogida}
+          onChange={e => setBaseRecogida(e.target.value)}
+        />
+
+        {baseRecogida !== "" && (
+          <div style={{ marginBottom: 8 }}>
+            <div style={S.resultRow}>
+              <span style={S.resultLabel}>Base original</span>
+              <span style={S.resultValue}>{fmt(baseConfigurada)}</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={{ ...S.resultLabel, color: colors.red }}>− Gastos registrados</span>
+              <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totalGastos)}</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={S.resultLabel}>Base esperada</span>
+              <span style={{ ...S.resultValue, color: colors.accent }}>{fmt(baseEsperada)}</span>
+            </div>
+            <div style={{ ...S.resultRow, borderBottom: "none" }}>
+              <span style={S.resultLabel}>Efectivo recogido</span>
+              <span style={S.resultValue}>{fmt(baseRecogidaNum)}</span>
+            </div>
+
+            {difBase === 0 ? (
+              <div style={S.alertBox("success")}>{Icons.check} La base cuadra con los gastos registrados</div>
+            ) : (
+              <div style={S.alertBox(difBase > 0 ? "info" : "error")}>
+                {difBase > 0 ? Icons.check : Icons.alert} {Math.abs(difBase) > 0 && `Diferencia de ${fmt(Math.abs(difBase))}`} ({difBase > 0 ? "sobra — posible menudeo no devuelto" : "falta — revisar gastos no registrados"})
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={S.divider} />
+
+        {/* Base nueva */}
+        <label style={S.label}>📤 Base nueva que se deja en sede</label>
+        <input
+          style={{ ...S.input, borderColor: colors.green, borderWidth: 2, fontSize: 16, fontWeight: 700, textAlign: "center" }}
+          type="number" inputMode="numeric"
+          placeholder={String(baseConfigurada)}
+          value={baseNueva}
+          onChange={e => setBaseNueva(e.target.value)}
+        />
+
+        {baseNuevaNum !== baseConfigurada && baseNueva !== "" && (
+          <div style={S.alertBox("info")}>
+            ⚠️ La base nueva ({fmt(baseNuevaNum)}) es diferente a la configurada ({fmt(baseConfigurada)})
+          </div>
+        )}
+
+        {baseNuevaNum === baseConfigurada && baseNueva !== "" && (
+          <div style={S.alertBox("success")}>{Icons.check} Base nueva completa</div>
+        )}
+      </div>
+
+      {/* ===== SECCIÓN 2: TRAZABILIDAD TOKENS DEL CICLO ===== */}
+      <div style={{
+        background: "rgba(239,68,68,0.04)",
+        border: "1px solid rgba(239,68,68,0.15)",
+        borderRadius: 14, padding: 20, marginBottom: 14,
+      }}>
+        <div style={{ ...S.cardTitle, color: colors.red }}>🔒 Control de Tokens — Zona Crítica</div>
+        <div style={{ fontSize: 12, color: colors.textDim, lineHeight: 1.6, marginBottom: 14 }}>
+          Aquí se cruza la información del ciclo anterior con las liquidaciones actuales para detectar tokens faltantes. Cada token perdido es dinero perdido.
+        </div>
+
+        {/* Tabla de trazabilidad por operador */}
+        {operadorData.map((op, i) => {
+          const tieneHistorial = op.historial !== null;
+          const vendidosCiclo = op.vendidosEsteC;
+          const devTokensCiclo = op.devTokensEsteC;
+          const saldoEsperado = tieneHistorial ? op.historial.saldo - vendidosCiclo - devTokensCiclo : null;
+          const estado = saldoEsperado === null ? "sin_historial" : saldoEsperado >= 0 ? "ok" : "faltante";
+
+          return (
+            <div key={i} style={{
+              background: colors.surface,
+              border: `1px solid ${estado === "faltante" ? "rgba(239,68,68,0.3)" : colors.border}`,
+              borderRadius: 12, padding: 16, marginBottom: 10,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: colors.textBright }}>{op.nombre}</div>
+                {estado === "faltante" && <span style={S.badge(colors.red, colors.redDim)}>⚠️ FALTANTE</span>}
+                {estado === "ok" && tieneHistorial && <span style={S.badge(colors.green, colors.greenDim)}>✓ OK</span>}
+                {estado === "sin_historial" && <span style={S.badge(colors.accent, colors.accentDim)}>NUEVO</span>}
+              </div>
+
+              {tieneHistorial ? (
+                <>
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                    <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Saldo anterior</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: colors.accent }}>{fmtNum(op.historial.saldo)}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Vendidos</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: colors.blue }}>−{fmtNum(vendidosCiclo)}</div>
+                    </div>
+                    <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Dev. Tokens</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: colors.purple }}>−{fmtNum(devTokensCiclo)}</div>
+                    </div>
+                    <div style={{
+                      flex: 1, minWidth: 80, borderRadius: 8, padding: "8px 10px", textAlign: "center",
+                      background: saldoEsperado >= 0 ? colors.greenDim : colors.redDim,
+                    }}>
+                      <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Debe tener</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: saldoEsperado >= 0 ? colors.green : colors.red }}>{fmtNum(saldoEsperado)}</div>
+                    </div>
+                  </div>
+
+                  {saldoEsperado < 0 && (
+                    <div style={S.alertBox("error")}>
+                      {Icons.alert} ¡Vendió {Math.abs(saldoEsperado)} tokens más de los que tenía! Revisar posibles tokens no devueltos o liquidaciones incorrectas.
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: colors.textDim, fontStyle: "italic" }}>
+                  Sin historial del ciclo anterior. Vendió {fmtNum(vendidosCiclo)} tokens en este ciclo.
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Resumen global de tokens */}
+        <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16, marginTop: 6 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: colors.textBright, marginBottom: 10 }}>📊 Balance Global de Tokens</div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Σ Saldos anteriores (todos los operadores)</span>
+            <span style={S.resultValue}>{fmtNum(totalSaldoAnterior)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Σ Vendidos este ciclo</span>
+            <span style={{ ...S.resultValue, color: colors.blue }}>−{fmtNum(totalVendidosCiclo)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Σ Dev. tokens este ciclo</span>
+            <span style={{ ...S.resultValue, color: colors.purple }}>−{fmtNum(totalDevTokensCiclo)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Tokens en máquinas (conteo físico)</span>
+            <span style={S.resultValue}>+{fmtNum(tokensMaq)}</span>
+          </div>
+          <div style={S.divider} />
+          <div style={{ ...S.resultRow, borderBottom: "none" }}>
+            <span style={{ ...S.resultLabel, fontWeight: 700, color: tokensPerdidos === 0 ? colors.green : colors.red }}>
+              {tokensPerdidos === 0 ? "✓ Sin faltantes" : `⚠️ Tokens no justificados`}
+            </span>
+            <span style={{ fontSize: 20, fontWeight: 800, color: tokensPerdidos === 0 ? colors.green : colors.red }}>
+              {tokensPerdidos === 0 ? "0" : fmtNum(tokensPerdidos)}
+            </span>
+          </div>
+          {tokensPerdidos > 0 && (
+            <div style={{ fontSize: 11, color: colors.red, marginTop: 6, lineHeight: 1.5 }}>
+              Estos tokens no están ni en las máquinas ni en los saldos de los operadores. Valor estimado en pérdida: <strong>{fmt(tokensPerdidos * 5000)}</strong> (a $5.000/token)
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ===== SECCIÓN 3: POOL ÚNICO Y REPARTICIÓN ===== */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🪙 Base de Tokens — Nuevo Ciclo</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.6 }}>
+          Todos los tokens (de máquinas + saldos de operadores) se unifican en una sola base. El tesorero reparte según turnos.
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: "45%", background: colors.surface2, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Tokens de máquinas</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: colors.blue, marginTop: 4 }}>{fmtNum(tokensMaq)}</div>
+          </div>
+          <div style={{ flex: 1, minWidth: "45%", background: colors.surface2, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "12px 14px", textAlign: "center" }}>
+            <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Saldos de operadores</div>
+            <div style={{ fontSize: 20, fontWeight: 800, color: colors.purple, marginTop: 4 }}>{fmtNum(totalSaldoEsperado)}</div>
+          </div>
+        </div>
+
+        <div style={{
+          background: colors.accentDim,
+          border: `1px solid rgba(245,158,11,0.25)`,
+          borderRadius: 12, padding: "16px", textAlign: "center",
+        }}>
+          <div style={{ fontSize: 10, color: colors.textDim, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Base total de tokens para repartir</div>
+          <div style={{ fontSize: 32, fontWeight: 800, color: colors.accent, marginTop: 4 }}>{fmtNum(totalTokensDisponible)}</div>
+        </div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>📤 Repartir por Operador / Turno</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14 }}>
+          Distribuye los {fmtNum(totalTokensDisponible)} tokens de la base entre los operadores según los turnos del nuevo ciclo.
+        </div>
+
+        {reparto.map((r, i) => (
+          <div key={i} style={{
+            background: colors.surface2, borderRadius: 10, padding: "12px 14px",
+            border: `1px solid ${colors.border}`, marginBottom: 10,
+            display: "flex", alignItems: "center", gap: 12,
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{r.nombre}</div>
+            </div>
+            <div style={{ width: 110 }}>
+              <input
+                style={{ ...S.input, marginBottom: 0, textAlign: "center", fontWeight: 700, fontSize: 16 }}
+                type="number" inputMode="numeric" placeholder="0"
+                value={r.tokens}
+                onChange={e => {
+                  const arr = [...reparto];
+                  arr[i].tokens = e.target.value;
+                  setReparto(arr);
+                }}
+              />
+            </div>
+            <span style={{ fontSize: 12, color: colors.textDim }}>tok</span>
+          </div>
+        ))}
+
+        <div style={S.divider} />
+
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Total repartido</span>
+          <span style={S.resultValue}>{fmtNum(totalTokensRepartido)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Base de tokens</span>
+          <span style={S.resultValue}>{fmtNum(totalTokensDisponible)}</span>
+        </div>
+        <div style={{ ...S.resultRow, borderBottom: "none" }}>
+          <span style={{ ...S.resultLabel, fontWeight: 700 }}>Restante sin repartir</span>
+          <span style={{ ...S.resultValue, color: tokensRestante === 0 ? colors.green : tokensRestante > 0 ? colors.accent : colors.red, fontSize: 20 }}>
+            {fmtNum(tokensRestante)}
+          </span>
+        </div>
+
+        {tokensRestante === 0 && totalTokensRepartido > 0 && (
+          <div style={S.alertBox("success")}>{Icons.check} Todos los tokens de la base repartidos</div>
+        )}
+        {tokensRestante > 0 && totalTokensRepartido > 0 && (
+          <div style={S.alertBox("info")}>⚠️ Quedan {fmtNum(tokensRestante)} tokens sin asignar</div>
+        )}
+        {tokensRestante < 0 && (
+          <div style={S.alertBox("error")}>{Icons.alert} Se repartieron {fmtNum(Math.abs(tokensRestante))} tokens más de los disponibles</div>
+        )}
+      </div>
+
+      <button style={S.btnPrimary} onClick={handleSave}>
+        {Icons.save} Confirmar Repartición y Base
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// RESUMEN PAGE (CONCILIACIÓN)
+// ============================================================
+function ResumenPage({ ciclo, totales, liquidaciones, maquinas, gastos, onAddGasto, onDeleteGasto, onReparto, onClose }) {
+  return (
+    <div>
+      {/* Summary cards */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+        <div style={{ ...S.summaryCard(), minWidth: "45%" }}>
+          <div style={S.summaryLabel}>Total Liquidaciones</div>
+          <div style={{ ...S.summaryValue(colors.green), fontSize: 16 }}>{fmt(totales.efectivoLiq)}</div>
+        </div>
+        <div style={{ ...S.summaryCard(), minWidth: "45%" }}>
+          <div style={S.summaryLabel}>Producido Máquinas</div>
+          <div style={{ ...S.summaryValue(colors.blue), fontSize: 16 }}>{fmt(totales.producidoMaq)}</div>
+        </div>
+      </div>
+
+      {/* Control efectivo */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>💰 Control Efectivo a Consignar</div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Valor liquidaciones (efectivo)</span>
+          <span style={S.resultValue}>{fmt(totales.efectivoLiq)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Recaudo monedas (conteo físico)</span>
+          <span style={S.resultValue}>{fmt(totales.valorMonedasGlobal)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Total recaudo bruto</span>
+          <span style={{ ...S.resultValue, color: colors.accent }}>{fmt(totales.totalRecaudo)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={{ ...S.resultLabel, color: colors.red }}>− Gastos caja menor</span>
+          <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.totalGastos)}</span>
+        </div>
+        <div style={S.divider} />
+        <div style={{ ...S.resultRow, borderBottom: "none" }}>
+          <span style={{ fontSize: 15, fontWeight: 700, color: colors.green }}>VALOR A CONSIGNAR</span>
+          <span style={{ fontSize: 22, fontWeight: 800, color: colors.green }}>{fmt(totales.aConsignar)}</span>
+        </div>
+      </div>
+
+      {/* Gastos */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>💸 Gastos de Caja Menor</div>
+        {gastos.length === 0 && (
+          <div style={{ fontSize: 13, color: colors.textDim, marginBottom: 12 }}>Sin gastos registrados</div>
+        )}
+        {gastos.map(g => (
+          <div key={g.id} style={{ ...S.resultRow }}>
+            <span style={S.resultLabel}>{g.concepto}</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ ...S.resultValue, color: colors.red }}>{fmt(g.monto)}</span>
+              <button style={{ background: "none", border: "none", color: colors.red, cursor: "pointer", padding: 2 }}
+                onClick={() => onDeleteGasto(g.id)}>
+                {Icons.trash}
+              </button>
+            </div>
+          </div>
+        ))}
+        <button style={{ ...S.btnSecondary, marginTop: 8 }} onClick={onAddGasto}>
+          {Icons.plus} Agregar Gasto
+        </button>
+      </div>
+
+      {/* Token control */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🪙 Control de Tokens</div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Tokens vendidos (liquidaciones)</span>
+          <span style={S.resultValue}>{fmtNum(totales.tokens)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Tokens físicos (conteo general)</span>
+          <span style={S.resultValue}>{fmtNum(totales.tokensMaq)}</span>
+        </div>
+        <div style={{ ...S.resultRow, borderBottom: "none" }}>
+          <span style={{ ...S.resultLabel, fontWeight: 700 }}>Total tokens del ciclo</span>
+          <span style={{ ...S.resultValue, color: colors.accent }}>{fmtNum(totales.tokens + totales.tokensMaq)}</span>
+        </div>
+        <button style={{ ...S.btnSecondary, marginTop: 12 }} onClick={onReparto}>
+          🪙 Repartir Tokens para Nuevo Ciclo
+        </button>
+      </div>
+
+      {/* Close cycle */}
+      <button style={{ ...S.btnPrimary, background: `linear-gradient(135deg, ${colors.green}, #059669)`, color: "#fff", marginTop: 8 }}
+        onClick={onClose}>
+        {Icons.check} Cerrar Ciclo y Generar Reporte
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
+// RESUMEN FINAL
+// ============================================================
+function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenReparto, onNewCiclo }) {
+  return (
+    <div>
+      <div style={S.alertBox("success")}>
+        {Icons.check} Ciclo cerrado exitosamente. En producción, este reporte se envía a Google Sheets automáticamente.
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>📋 Reporte del Ciclo</div>
+        <div style={S.resultRow}><span style={S.resultLabel}>Sede</span><span style={S.resultValue}>{ciclo.sede}</span></div>
+        <div style={S.resultRow}><span style={S.resultLabel}>Tesorero</span><span style={S.resultValue}>{ciclo.tesorero}</span></div>
+        <div style={S.resultRow}><span style={S.resultLabel}>Fecha</span><span style={S.resultValue}>{ciclo.fecha} - {ciclo.hora}</span></div>
+        <div style={S.resultRow}><span style={S.resultLabel}>Liquidaciones</span><span style={S.resultValue}>{liquidaciones.length}</span></div>
+        <div style={S.resultRow}><span style={S.resultLabel}>Máquinas contadas</span><span style={S.resultValue}>{maquinas.length}</span></div>
+      </div>
+
+      <div style={S.card}>
+        <div style={S.cardTitle}>💰 Resumen Financiero</div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Total liquidaciones</span>
+          <span style={S.resultValue}>{fmt(totales.efectivoLiq)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>QR descontado</span>
+          <span style={S.resultValue}>{fmt(totales.qr)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Devoluciones</span>
+          <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.devoluciones)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Recaudo monedas (conteo físico)</span>
+          <span style={S.resultValue}>{fmt(totales.valorMonedasGlobal)}</span>
+        </div>
+        <div style={S.resultRow}>
+          <span style={S.resultLabel}>Gastos caja menor</span>
+          <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.totalGastos)}</span>
+        </div>
+        <div style={S.divider} />
+        <div style={{ ...S.resultRow, borderBottom: "none" }}>
+          <span style={{ fontSize: 16, fontWeight: 700, color: colors.green }}>VALOR A CONSIGNAR</span>
+          <span style={{ fontSize: 24, fontWeight: 800, color: colors.green }}>{fmt(totales.aConsignar)}</span>
+        </div>
+      </div>
+
+      {/* Detalle liquidaciones */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🧾 Detalle Liquidaciones</div>
+        {liquidaciones.map((l, i) => (
+          <div key={l.id} style={{ ...S.resultRow }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: colors.textBright }}>Liq. {i + 1} - {l.operador}</div>
+              <div style={{ fontSize: 11, color: colors.textDim }}>{fmtNum(l.tokensVendidos)} tokens · QR: {fmt(l.qr)}</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{fmt(l.efectivo)}</div>
+              {l.descuadre !== 0 && (
+                <div style={{ fontSize: 11, color: colors.red }}>Δ {fmt(l.descuadre)}</div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Detalle maquinas */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🔧 Detalle Máquinas</div>
+        {maquinas.map(m => (
+          <div key={m.id} style={{ ...S.resultRow }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: colors.textBright }}>{m.nombre}</div>
+              <div style={{ fontSize: 11, color: colors.textDim }}>TOKEN_DIA: {fmtNum(m.tokenDia)} · MONE_DIA: {fmt(m.moneDia)}</div>
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: colors.green }}>{fmt(m.producido)}</div>
+          </div>
+        ))}
+      </div>
+
+      {gastos.length > 0 && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>💸 Gastos</div>
+          {gastos.map(g => (
+            <div key={g.id} style={S.resultRow}>
+              <span style={S.resultLabel}>{g.concepto}</span>
+              <span style={{ ...S.resultValue, color: colors.red }}>{fmt(g.monto)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tokenReparto && tokenReparto.operadores && tokenReparto.operadores.length > 0 && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>🪙 Repartición Nuevo Ciclo</div>
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Tokens por operador</div>
+          {tokenReparto.operadores.map((r, i) => (
+            <div key={i} style={S.resultRow}>
+              <span style={S.resultLabel}>{r.nombre}</span>
+              <span style={S.resultValue}>{fmtNum(r.tokens)} tokens</span>
+            </div>
+          ))}
+
+          <div style={S.divider} />
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Base de efectivo</div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Base recogida</span>
+            <span style={S.resultValue}>{fmt(tokenReparto.baseRecogida)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Base nueva dejada</span>
+            <span style={{ ...S.resultValue, color: colors.green }}>{fmt(tokenReparto.baseNueva)}</span>
+          </div>
+        </div>
+      )}
+
+      <div style={{ ...S.card, background: colors.blueDim, borderColor: "rgba(59,130,246,0.25)", textAlign: "center" }}>
+        <div style={{ fontSize: 13, color: colors.blue, lineHeight: 1.7 }}>
+          📤 <strong>En producción:</strong> Este reporte se envía automáticamente a Google Sheets y notifica por email al administrador.
+        </div>
+      </div>
+
+      <button style={{ ...S.btnPrimary, marginTop: 8 }} onClick={onNewCiclo}>
+        🚀 Iniciar Nuevo Ciclo
+      </button>
+    </div>
+  );
+}
+
+
+// ============================================================
+// RENDER
+// ============================================================
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App />);
+document.getElementById('loading').style.display = 'none';
+  </script>
+</body>
+</html>
