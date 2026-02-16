@@ -26,7 +26,7 @@
 <body>
   <div id="loading">
     <div class="spinner"></div>
-    <div style="font-size:18px;font-weight:700;">Panzer Carwash</div>
+    <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" alt="Panzer Carwash" style="width:160px;margin-bottom:12px;">
     <div style="font-size:13px;color:#64748b;margin-top:6px;">Cargando sistema de recaudo...</div>
   </div>
   <div id="root"></div>
@@ -600,11 +600,14 @@ function App() {
           {subPage && (
             <button style={S.backBtn} onClick={goBack}>{Icons.back}</button>
           )}
-          <div style={{ flex: 1 }}>
-            <h1 style={S.headerTitle}>{currentTitle() || "Panzer Carwash"}</h1>
+          <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 10 }}>
+            <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" alt="P" style={{ height: 28 }} />
+            <div>
+              <h1 style={S.headerTitle}>{currentTitle() || "Panzer Carwash"}</h1>
             {ciclo && !subPage && (
               <p style={S.headerSub}>{ciclo.sede} · {ciclo.fecha} · {ciclo.tesorero}</p>
             )}
+            </div>
           </div>
           {ciclo && (
             <span style={S.badge(
@@ -779,10 +782,7 @@ function InicioPage({ onStart, apiConfig, apiLoading }) {
   return (
     <div>
       <div style={{ textAlign: "center", padding: "30px 0 24px" }}>
-        <div style={{ fontSize: 40, marginBottom: 12 }}>🔧</div>
-        <h1 style={{ fontSize: 26, fontWeight: 800, color: colors.textBright, margin: "0 0 6px" }}>
-          Panzer <span style={{ color: colors.accent }}>Carwash</span>
-        </h1>
+        <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" alt="Panzer Carwash" style={{ width: 180, marginBottom: 12 }} />
         <p style={{ fontSize: 13, color: colors.textDim }}>Sistema de Recaudo Digital</p>
       </div>
 
