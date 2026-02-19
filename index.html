@@ -1622,6 +1622,7 @@ function ConteoFisicoGlobal({ maquinas, conteoFisico, totales, onSave }) {
 function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
   const operadores = [...new Set(liquidaciones.map(l => l.operador).filter(Boolean))];
   const [reparto, setReparto] = useState(operadores.map(op => ({ nombre: op, tokens: "" })));
+  const [modoReparto, setModoReparto] = useState("operadores"); // "operadores" o "sede"
 
   // Base de efectivo
   const baseConfigurada = getBase(sede);
@@ -1664,11 +1665,19 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
 
   const handleSave = () => {
     onSave({
-      operadores: reparto,
+      modoReparto,
+      operadores: modoReparto === "operadores" ? reparto : [],
+      tokensTotalBase: totalTokensDisponible,
       baseRecogida: baseRecogidaNum,
       baseNueva: baseNuevaNum,
       baseConfigurada,
       totalGastosDeSede: totalGastos,
+      controlTokens: operadorData,
+      tokensMaq,
+      totalSaldoAnterior,
+      totalVendidosCiclo,
+      totalDevTokensCiclo,
+      tokensPerdidos,
     });
   };
 
@@ -1870,7 +1879,7 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
       <div style={S.card}>
         <div style={S.cardTitle}>🪙 Base de Tokens — Nuevo Ciclo</div>
         <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.6 }}>
-          Todos los tokens (de máquinas + saldos de operadores) se unifican en una sola base. El tesorero reparte según turnos.
+          Todos los tokens (de máquinas + saldos de operadores) se unifican en una sola base.
         </div>
 
         <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
@@ -1889,68 +1898,114 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
           border: `1px solid rgba(245,158,11,0.25)`,
           borderRadius: 12, padding: "16px", textAlign: "center",
         }}>
-          <div style={{ fontSize: 10, color: colors.textDim, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Base total de tokens para repartir</div>
+          <div style={{ fontSize: 10, color: colors.textDim, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Base total de tokens</div>
           <div style={{ fontSize: 32, fontWeight: 800, color: colors.accent, marginTop: 4 }}>{fmtNum(totalTokensDisponible)}</div>
         </div>
       </div>
 
+      {/* Toggle modo de repartición */}
       <div style={S.card}>
-        <div style={S.cardTitle}>📤 Repartir por Operador / Turno</div>
-        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14 }}>
-          Distribuye los {fmtNum(totalTokensDisponible)} tokens de la base entre los operadores según los turnos del nuevo ciclo.
+        <div style={S.cardTitle}>📤 ¿Cómo repartir los tokens?</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            style={{
+              flex: 1, padding: "14px 10px", borderRadius: 12, border: "2px solid",
+              borderColor: modoReparto === "operadores" ? colors.accent : colors.border,
+              background: modoReparto === "operadores" ? colors.accentDim : colors.surface2,
+              color: modoReparto === "operadores" ? colors.accent : colors.textDim,
+              cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 13,
+            }}
+            onClick={() => setModoReparto("operadores")}
+          >
+            👥 Repartir entre operadores
+          </button>
+          <button
+            style={{
+              flex: 1, padding: "14px 10px", borderRadius: 12, border: "2px solid",
+              borderColor: modoReparto === "sede" ? colors.blue : colors.border,
+              background: modoReparto === "sede" ? colors.blueDim : colors.surface2,
+              color: modoReparto === "sede" ? colors.blue : colors.textDim,
+              cursor: "pointer", fontFamily: "inherit", fontWeight: 700, fontSize: 13,
+            }}
+            onClick={() => setModoReparto("sede")}
+          >
+            🏢 Dejar base completa en sede
+          </button>
         </div>
+      </div>
 
-        {reparto.map((r, i) => (
-          <div key={i} style={{
-            background: colors.surface2, borderRadius: 10, padding: "12px 14px",
-            border: `1px solid ${colors.border}`, marginBottom: 10,
-            display: "flex", alignItems: "center", gap: 12,
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{r.nombre}</div>
-            </div>
-            <div style={{ width: 110 }}>
-              <input
-                style={{ ...S.input, marginBottom: 0, textAlign: "center", fontWeight: 700, fontSize: 16 }}
-                type="number" inputMode="numeric" placeholder="0"
-                value={r.tokens}
-                onChange={e => {
-                  const arr = [...reparto];
-                  arr[i].tokens = e.target.value;
-                  setReparto(arr);
-                }}
-              />
-            </div>
-            <span style={{ fontSize: 12, color: colors.textDim }}>tok</span>
+      {modoReparto === "operadores" && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>👥 Repartir por Operador / Turno</div>
+          <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14 }}>
+            Distribuye los {fmtNum(totalTokensDisponible)} tokens entre los operadores según los turnos del nuevo ciclo.
           </div>
-        ))}
 
-        <div style={S.divider} />
+          {reparto.map((r, i) => (
+            <div key={i} style={{
+              background: colors.surface2, borderRadius: 10, padding: "12px 14px",
+              border: `1px solid ${colors.border}`, marginBottom: 10,
+              display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{r.nombre}</div>
+              </div>
+              <div style={{ width: 110 }}>
+                <input
+                  style={{ ...S.input, marginBottom: 0, textAlign: "center", fontWeight: 700, fontSize: 16 }}
+                  type="number" inputMode="numeric" placeholder="0"
+                  value={r.tokens}
+                  onChange={e => {
+                    const arr = [...reparto];
+                    arr[i].tokens = e.target.value;
+                    setReparto(arr);
+                  }}
+                />
+              </div>
+              <span style={{ fontSize: 12, color: colors.textDim }}>tok</span>
+            </div>
+          ))}
 
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>Total repartido</span>
-          <span style={S.resultValue}>{fmtNum(totalTokensRepartido)}</span>
-        </div>
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>Base de tokens</span>
-          <span style={S.resultValue}>{fmtNum(totalTokensDisponible)}</span>
-        </div>
-        <div style={{ ...S.resultRow, borderBottom: "none" }}>
-          <span style={{ ...S.resultLabel, fontWeight: 700 }}>Restante sin repartir</span>
-          <span style={{ ...S.resultValue, color: tokensRestante === 0 ? colors.green : tokensRestante > 0 ? colors.accent : colors.red, fontSize: 20 }}>
-            {fmtNum(tokensRestante)}
-          </span>
-        </div>
+          <div style={S.divider} />
 
-        {tokensRestante === 0 && totalTokensRepartido > 0 && (
-          <div style={S.alertBox("success")}>{Icons.check} Todos los tokens de la base repartidos</div>
-        )}
-        {tokensRestante > 0 && totalTokensRepartido > 0 && (
-          <div style={S.alertBox("info")}>⚠️ Quedan {fmtNum(tokensRestante)} tokens sin asignar</div>
-        )}
-        {tokensRestante < 0 && (
-          <div style={S.alertBox("error")}>{Icons.alert} Se repartieron {fmtNum(Math.abs(tokensRestante))} tokens más de los disponibles</div>
-        )}
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Total repartido</span>
+            <span style={S.resultValue}>{fmtNum(totalTokensRepartido)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Base de tokens</span>
+            <span style={S.resultValue}>{fmtNum(totalTokensDisponible)}</span>
+          </div>
+          <div style={{ ...S.resultRow, borderBottom: "none" }}>
+            <span style={{ ...S.resultLabel, fontWeight: 700 }}>Restante sin repartir</span>
+            <span style={{ ...S.resultValue, color: tokensRestante === 0 ? colors.green : tokensRestante > 0 ? colors.accent : colors.red, fontSize: 20 }}>
+              {fmtNum(tokensRestante)}
+            </span>
+          </div>
+
+          {tokensRestante === 0 && totalTokensRepartido > 0 && (
+            <div style={S.alertBox("success")}>{Icons.check} Todos los tokens de la base repartidos</div>
+          )}
+          {tokensRestante > 0 && totalTokensRepartido > 0 && (
+            <div style={S.alertBox("info")}>⚠️ Quedan {fmtNum(tokensRestante)} tokens sin asignar</div>
+          )}
+          {tokensRestante < 0 && (
+            <div style={S.alertBox("error")}>{Icons.alert} Se repartieron {fmtNum(Math.abs(tokensRestante))} tokens más de los disponibles</div>
+          )}
+        </div>
+      )}
+
+      {modoReparto === "sede" && (
+        <div style={S.card}>
+          <div style={S.cardTitle}>🏢 Base Completa en Sede</div>
+          <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.6 }}>
+            Los {fmtNum(totalTokensDisponible)} tokens quedan como base en la sede. Los operadores toman tokens de esta base según necesiten.
+          </div>
+          <div style={S.alertBox("success")}>
+            {Icons.check} Se dejarán {fmtNum(totalTokensDisponible)} tokens como base en {sede}
+          </div>
+        </div>
+      )}
       </div>
 
       <button style={S.btnPrimary} onClick={handleSave}>
@@ -2275,36 +2330,112 @@ function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenRe
           ))}
         </div>
 
-        {/* Gastos */}
-        {gastos.length > 0 && (
-          <div style={S.card}>
-            <div style={S.cardTitle}>💸 Gastos ({gastos.length})</div>
-            {gastos.map(g => (
-              <div key={g.id} style={S.resultRow}>
-                <span style={S.resultLabel}>{g.concepto}</span>
-                <span style={{ ...S.resultValue, color: colors.red }}>{fmt(g.monto)}</span>
+        {/* Gastos detallados */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>💸 Gastos Caja Menor</div>
+          {gastos.length > 0 ? (
+            <>
+              {gastos.map(g => (
+                <div key={g.id} style={S.resultRow}>
+                  <span style={S.resultLabel}>{g.concepto}</span>
+                  <span style={{ ...S.resultValue, color: colors.red }}>{fmt(g.monto)}</span>
+                </div>
+              ))}
+              <div style={S.divider} />
+              <div style={{ ...S.resultRow, borderBottom: "none" }}>
+                <span style={{ ...S.resultLabel, fontWeight: 700 }}>Total gastos</span>
+                <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.totalGastos)}</span>
+              </div>
+            </>
+          ) : (
+            <div style={{ fontSize: 13, color: colors.textDim, fontStyle: "italic" }}>Sin gastos registrados en este ciclo</div>
+          )}
+        </div>
+
+        {/* Control de Tokens por operador */}
+        {tokenReparto && tokenReparto.controlTokens && (
+          <div style={{
+            background: "rgba(239,68,68,0.04)",
+            border: "1px solid rgba(239,68,68,0.15)",
+            borderRadius: 14, padding: 20, marginBottom: 14,
+          }}>
+            <div style={{ fontSize: 15, fontWeight: 700, color: colors.red, marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>🔒 Control de Tokens</div>
+
+            {tokenReparto.controlTokens.map((op, i) => (
+              <div key={i} style={{
+                background: colors.surface, border: `1px solid ${colors.border}`,
+                borderRadius: 10, padding: 12, marginBottom: 8,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{op.nombre}</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 8,
+                    background: (op.saldoEsperado === null || op.saldoEsperado >= 0) ? colors.greenDim : colors.redDim,
+                    color: (op.saldoEsperado === null || op.saldoEsperado >= 0) ? colors.green : colors.red,
+                  }}>
+                    {op.saldoEsperado === null ? "NUEVO" : op.saldoEsperado >= 0 ? "✓ OK" : "⚠️ FALTANTE"}
+                  </span>
+                </div>
+                {op.historial ? (
+                  <div style={{ fontSize: 12, color: colors.textDim }}>
+                    Saldo ant: {fmtNum(op.historial.saldo)} · Vendidos: {fmtNum(op.vendidosEsteC)} · Dev: {fmtNum(op.devTokensEsteC)} · <strong style={{ color: op.saldoEsperado >= 0 ? colors.green : colors.red }}>Debe tener: {fmtNum(op.saldoEsperado)}</strong>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 12, color: colors.textDim }}>Sin historial · Vendió: {fmtNum(op.vendidosEsteC)}</div>
+                )}
               </div>
             ))}
-            <div style={S.divider} />
-            <div style={{ ...S.resultRow, borderBottom: "none" }}>
-              <span style={{ ...S.resultLabel, fontWeight: 700 }}>Total gastos</span>
-              <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.totalGastos)}</span>
+
+            <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 14, marginTop: 6 }}>
+              <div style={S.resultRow}>
+                <span style={S.resultLabel}>Tokens en máquinas</span>
+                <span style={S.resultValue}>{fmtNum(tokenReparto.tokensMaq)}</span>
+              </div>
+              <div style={S.resultRow}>
+                <span style={S.resultLabel}>Σ Saldos anteriores</span>
+                <span style={S.resultValue}>{fmtNum(tokenReparto.totalSaldoAnterior)}</span>
+              </div>
+              <div style={S.resultRow}>
+                <span style={S.resultLabel}>Σ Vendidos ciclo</span>
+                <span style={{ ...S.resultValue, color: colors.blue }}>−{fmtNum(tokenReparto.totalVendidosCiclo)}</span>
+              </div>
+              {tokenReparto.tokensPerdidos > 0 && (
+                <div style={{ ...S.resultRow, borderBottom: "none" }}>
+                  <span style={{ ...S.resultLabel, color: colors.red, fontWeight: 700 }}>⚠️ Tokens no justificados</span>
+                  <span style={{ ...S.resultValue, color: colors.red, fontSize: 18 }}>{fmtNum(tokenReparto.tokensPerdidos)}</span>
+                </div>
+              )}
             </div>
           </div>
         )}
 
         {/* Repartición */}
-        {tokenReparto && tokenReparto.operadores && tokenReparto.operadores.length > 0 && (
+        {tokenReparto && (
           <div style={S.card}>
-            <div style={S.cardTitle}>🪙 Repartición Nuevo Ciclo</div>
+            <div style={S.cardTitle}>🪙 Tokens Nuevo Ciclo</div>
 
-            <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Tokens por operador</div>
-            {tokenReparto.operadores.map((r, i) => (
-              <div key={i} style={S.resultRow}>
-                <span style={S.resultLabel}>{r.nombre}</span>
-                <span style={S.resultValue}>{fmtNum(r.tokens)} tokens</span>
-              </div>
-            ))}
+            <div style={S.resultRow}>
+              <span style={S.resultLabel}>Base total de tokens</span>
+              <span style={{ ...S.resultValue, color: colors.accent }}>{fmtNum(tokenReparto.tokensTotalBase)}</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={S.resultLabel}>Modo</span>
+              <span style={{ ...S.resultValue, fontSize: 13 }}>
+                {tokenReparto.modoReparto === "sede" ? "🏢 Base completa en sede" : "👥 Repartido entre operadores"}
+              </span>
+            </div>
+
+            {tokenReparto.modoReparto === "operadores" && tokenReparto.operadores && tokenReparto.operadores.length > 0 && (
+              <>
+                <div style={S.divider} />
+                {tokenReparto.operadores.map((r, i) => (
+                  <div key={i} style={S.resultRow}>
+                    <span style={S.resultLabel}>{r.nombre}</span>
+                    <span style={S.resultValue}>{fmtNum(r.tokens)} tokens</span>
+                  </div>
+                ))}
+              </>
+            )}
 
             <div style={S.divider} />
 
@@ -2313,7 +2444,7 @@ function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenRe
               <span style={S.resultLabel}>Base recogida</span>
               <span style={S.resultValue}>{fmt(tokenReparto.baseRecogida)}</span>
             </div>
-            <div style={S.resultRow}>
+            <div style={{ ...S.resultRow, borderBottom: "none" }}>
               <span style={S.resultLabel}>Base nueva dejada</span>
               <span style={{ ...S.resultValue, color: colors.green }}>{fmt(tokenReparto.baseNueva)}</span>
             </div>
