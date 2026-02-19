@@ -34,6 +34,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
   <script type="text/babel">
 const { useState, useEffect, useCallback } = React;
@@ -475,6 +477,28 @@ function App() {
     }).catch(() => setApiLoading(false));
   }, []);
 
+  // ============================================================
+  // AUTOGUARDADO LOCAL - Protege contra cierre accidental
+  // ============================================================
+  const STORAGE_KEY = 'panzer_ciclo_progreso';
+
+  const guardarLocal = useCallback((datos) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(datos));
+    } catch(e) {}
+  }, []);
+
+  const cargarLocal = () => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
+  };
+
+  const borrarLocal = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch(e) {}
+  };
+
   // Cycle state
   const [ciclo, setCiclo] = useState(null);
   const [liquidaciones, setLiquidaciones] = useState([]);
@@ -482,6 +506,44 @@ function App() {
   const [gastos, setGastos] = useState([]);
   const [tokenReparto, setTokenReparto] = useState([]);
   const [conteoFisico, setConteoFisico] = useState({ tokensFisicos: "", efectivoTotal: "" });
+  const [showRestore, setShowRestore] = useState(false);
+  const [savedData, setSavedData] = useState(null);
+
+  // Al abrir: verificar si hay ciclo guardado
+  useEffect(() => {
+    const datos = cargarLocal();
+    if (datos && datos.ciclo && datos.ciclo.estado === 'abierto') {
+      setSavedData(datos);
+      setShowRestore(true);
+    }
+  }, []);
+
+  // Autoguardar cada vez que cambia algo del ciclo
+  useEffect(() => {
+    if (ciclo && ciclo.estado === 'abierto') {
+      guardarLocal({ ciclo, liquidaciones, maquinas, gastos, tokenReparto, conteoFisico, tab });
+    }
+  }, [ciclo, liquidaciones, maquinas, gastos, tokenReparto, conteoFisico, tab, guardarLocal]);
+
+  const restaurarCiclo = () => {
+    if (savedData) {
+      setCiclo(savedData.ciclo);
+      setLiquidaciones(savedData.liquidaciones || []);
+      setMaquinas(savedData.maquinas || []);
+      setGastos(savedData.gastos || []);
+      setTokenReparto(savedData.tokenReparto || []);
+      setConteoFisico(savedData.conteoFisico || { tokensFisicos: "", efectivoTotal: "" });
+      setTab(savedData.tab || "liquidaciones");
+    }
+    setShowRestore(false);
+    setSavedData(null);
+  };
+
+  const descartarCiclo = () => {
+    borrarLocal();
+    setShowRestore(false);
+    setSavedData(null);
+  };
 
   // Editing state
   const [editingLiq, setEditingLiq] = useState(null);
@@ -533,6 +595,7 @@ function App() {
       });
       if (result?.success) {
         setApiMsg("✅ Guardado exitosamente — ID: " + result.cicloId);
+        borrarLocal(); // Limpiar autoguardado al enviar exitosamente
       } else {
         setApiMsg("⚠️ Error al guardar: " + (result?.error || "Sin conexión"));
       }
@@ -621,6 +684,44 @@ function App() {
       )}
 
       {/* LOADING & API MESSAGES */}
+
+      {/* DIÁLOGO DE RESTAURACIÓN */}
+      {showRestore && savedData && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div style={{ background: colors.surface, border: `1px solid ${colors.accent}`, borderRadius: 18, padding: 24, maxWidth: 380, width: "100%" }}>
+            <div style={{ textAlign: "center", marginBottom: 20 }}>
+              <div style={{ fontSize: 40, marginBottom: 10 }}>💾</div>
+              <h2 style={{ fontSize: 18, fontWeight: 800, color: colors.textBright, margin: "0 0 8px" }}>Ciclo en progreso encontrado</h2>
+              <p style={{ fontSize: 13, color: colors.textDim, lineHeight: 1.6 }}>
+                Tienes un ciclo sin terminar de <strong style={{ color: colors.accent }}>{savedData.ciclo.sede}</strong> del {savedData.ciclo.fecha}.
+              </p>
+            </div>
+
+            <div style={{ background: colors.surface2, borderRadius: 12, padding: 14, marginBottom: 16, border: `1px solid ${colors.border}` }}>
+              <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 8, fontWeight: 700 }}>Datos guardados:</div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.textBright, marginBottom: 4 }}>
+                <span>Tesorero</span><span style={{ fontWeight: 700 }}>{savedData.ciclo.tesorero}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.textBright, marginBottom: 4 }}>
+                <span>Liquidaciones</span><span style={{ fontWeight: 700, color: colors.green }}>{(savedData.liquidaciones || []).length}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.textBright, marginBottom: 4 }}>
+                <span>Máquinas</span><span style={{ fontWeight: 700, color: colors.blue }}>{(savedData.maquinas || []).length}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: colors.textBright }}>
+                <span>Gastos</span><span style={{ fontWeight: 700, color: colors.red }}>{(savedData.gastos || []).length}</span>
+              </div>
+            </div>
+
+            <button style={{ ...S.btnPrimary, marginBottom: 10 }} onClick={restaurarCiclo}>
+              ✅ Continuar donde iba
+            </button>
+            <button style={S.btnDanger} onClick={descartarCiclo}>
+              🗑️ Descartar y empezar nuevo
+            </button>
+          </div>
+        </div>
+      )}
       {apiLoading && (
         <div style={{ padding: "12px 20px", background: colors.accentDim, display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 16, height: 16, border: "2px solid " + colors.border, borderTopColor: colors.accent, borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
@@ -1959,128 +2060,285 @@ function ResumenPage({ ciclo, totales, liquidaciones, maquinas, gastos, onAddGas
 // RESUMEN FINAL
 // ============================================================
 function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenReparto, onNewCiclo }) {
+  const reportRef = React.createRef();
+  const [generandoPDF, setGenerandoPDF] = useState(false);
+
+  const generarPDF = async () => {
+    setGenerandoPDF(true);
+    try {
+      const el = reportRef.current;
+      const canvas = await html2canvas(el, {
+        backgroundColor: '#080c14',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const { jsPDF } = window.jspdf;
+      const pdfWidth = 210; // A4 mm
+      const imgWidth = pdfWidth - 20; // 10mm márgenes
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      let posY = 10;
+      const pageHeight = 287; // A4 alto útil
+
+      // Si la imagen es más alta que una página, dividir
+      if (imgHeight <= pageHeight) {
+        pdf.addImage(imgData, 'JPEG', 10, posY, imgWidth, imgHeight);
+      } else {
+        // Multipágina
+        let remainingHeight = canvas.height;
+        let sourceY = 0;
+        const sliceHeight = Math.floor(canvas.width * pageHeight / imgWidth);
+        let page = 0;
+        while (remainingHeight > 0) {
+          if (page > 0) pdf.addPage();
+          const sliceCanvas = document.createElement('canvas');
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = Math.min(sliceHeight, remainingHeight);
+          const ctx = sliceCanvas.getContext('2d');
+          ctx.drawImage(canvas, 0, sourceY, canvas.width, sliceCanvas.height, 0, 0, canvas.width, sliceCanvas.height);
+          const sliceImg = sliceCanvas.toDataURL('image/jpeg', 0.95);
+          const sliceImgH = (sliceCanvas.height * imgWidth) / sliceCanvas.width;
+          pdf.addImage(sliceImg, 'JPEG', 10, 10, imgWidth, sliceImgH);
+          sourceY += sliceHeight;
+          remainingHeight -= sliceHeight;
+          page++;
+        }
+      }
+
+      const fileName = `Panzer_${ciclo.sede}_${ciclo.fecha.replace(/\//g, '-')}.pdf`;
+
+      // En celular: intentar compartir por WhatsApp si está disponible
+      if (navigator.share && navigator.canShare) {
+        const blob = pdf.output('blob');
+        const file = new File([blob], fileName, { type: 'application/pdf' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: 'Reporte Panzer Carwash - ' + ciclo.sede,
+            text: 'Reporte de recaudo ' + ciclo.sede + ' - ' + ciclo.fecha,
+            files: [file],
+          });
+          setGenerandoPDF(false);
+          return;
+        }
+      }
+      // Fallback: descarga directa
+      pdf.save(fileName);
+    } catch (e) {
+      console.error('Error generando PDF:', e);
+      alert('Error al generar el PDF. Intenta de nuevo.');
+    }
+    setGenerandoPDF(false);
+  };
+
   return (
     <div>
-      <div style={S.alertBox("success")}>
-        {Icons.check} Ciclo cerrado exitosamente. En producción, este reporte se envía a Google Sheets automáticamente.
+      {/* Botones de acción arriba */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <button
+          style={{ ...S.btnPrimary, background: `linear-gradient(135deg, #25D366, #128C7E)`, flex: 1 }}
+          onClick={generarPDF}
+          disabled={generandoPDF}
+        >
+          {generandoPDF ? "⏳ Generando..." : "📤 Descargar / Compartir PDF"}
+        </button>
       </div>
 
-      <div style={S.card}>
-        <div style={S.cardTitle}>📋 Reporte del Ciclo</div>
-        <div style={S.resultRow}><span style={S.resultLabel}>Sede</span><span style={S.resultValue}>{ciclo.sede}</span></div>
-        <div style={S.resultRow}><span style={S.resultLabel}>Tesorero</span><span style={S.resultValue}>{ciclo.tesorero}</span></div>
-        <div style={S.resultRow}><span style={S.resultLabel}>Fecha</span><span style={S.resultValue}>{ciclo.fecha} - {ciclo.hora}</span></div>
-        <div style={S.resultRow}><span style={S.resultLabel}>Liquidaciones</span><span style={S.resultValue}>{liquidaciones.length}</span></div>
-        <div style={S.resultRow}><span style={S.resultLabel}>Máquinas contadas</span><span style={S.resultValue}>{maquinas.length}</span></div>
-      </div>
+      {/* Contenido del reporte que se captura como PDF */}
+      <div ref={reportRef} style={{ background: colors.bg, padding: 4 }}>
 
-      <div style={S.card}>
-        <div style={S.cardTitle}>💰 Resumen Financiero</div>
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>Total liquidaciones</span>
-          <span style={S.resultValue}>{fmt(totales.efectivoLiq)}</span>
-        </div>
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>QR descontado</span>
-          <span style={S.resultValue}>{fmt(totales.qr)}</span>
-        </div>
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>Devoluciones</span>
-          <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.devoluciones)}</span>
-        </div>
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>Recaudo monedas (conteo físico)</span>
-          <span style={S.resultValue}>{fmt(totales.valorMonedasGlobal)}</span>
-        </div>
-        <div style={S.resultRow}>
-          <span style={S.resultLabel}>Gastos caja menor</span>
-          <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.totalGastos)}</span>
-        </div>
-        <div style={S.divider} />
-        <div style={{ ...S.resultRow, borderBottom: "none" }}>
-          <span style={{ fontSize: 16, fontWeight: 700, color: colors.green }}>VALOR A CONSIGNAR</span>
-          <span style={{ fontSize: 24, fontWeight: 800, color: colors.green }}>{fmt(totales.aConsignar)}</span>
-        </div>
-      </div>
-
-      {/* Detalle liquidaciones */}
-      <div style={S.card}>
-        <div style={S.cardTitle}>🧾 Detalle Liquidaciones</div>
-        {liquidaciones.map((l, i) => (
-          <div key={l.id} style={{ ...S.resultRow }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: colors.textBright }}>Liq. {i + 1} - {l.operador}</div>
-              <div style={{ fontSize: 11, color: colors.textDim }}>{fmtNum(l.tokensVendidos)} tokens · QR: {fmt(l.qr)}</div>
-            </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{fmt(l.efectivo)}</div>
-              {l.descuadre !== 0 && (
-                <div style={{ fontSize: 11, color: colors.red }}>Δ {fmt(l.descuadre)}</div>
-              )}
-            </div>
+        {/* Header del reporte */}
+        <div style={{
+          background: `linear-gradient(135deg, ${colors.surface}, ${colors.surface2})`,
+          border: `1px solid ${colors.accent}`,
+          borderRadius: 14, padding: 20, marginBottom: 14, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 20, fontWeight: 800, color: colors.accent, marginBottom: 4 }}>PANZER CARWASH</div>
+          <div style={{ fontSize: 14, color: colors.textDim, marginBottom: 12 }}>Reporte de Recaudo</div>
+          <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 8 }}>
+            <div><div style={{ fontSize: 10, color: colors.textDim }}>SEDE</div><div style={{ fontSize: 15, fontWeight: 700, color: colors.textBright }}>{ciclo.sede}</div></div>
+            <div><div style={{ fontSize: 10, color: colors.textDim }}>TESORERO</div><div style={{ fontSize: 15, fontWeight: 700, color: colors.textBright }}>{ciclo.tesorero}</div></div>
+            <div><div style={{ fontSize: 10, color: colors.textDim }}>FECHA</div><div style={{ fontSize: 15, fontWeight: 700, color: colors.textBright }}>{ciclo.fecha}</div></div>
           </div>
-        ))}
-      </div>
-
-      {/* Detalle maquinas */}
-      <div style={S.card}>
-        <div style={S.cardTitle}>🔧 Detalle Máquinas</div>
-        {maquinas.map(m => (
-          <div key={m.id} style={{ ...S.resultRow }}>
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: colors.textBright }}>{m.nombre}</div>
-              <div style={{ fontSize: 11, color: colors.textDim }}>TOKEN_DIA: {fmtNum(m.tokenDia)} · MONE_DIA: {fmt(m.moneDia)}</div>
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: colors.green }}>{fmt(m.producido)}</div>
-          </div>
-        ))}
-      </div>
-
-      {gastos.length > 0 && (
-        <div style={S.card}>
-          <div style={S.cardTitle}>💸 Gastos</div>
-          {gastos.map(g => (
-            <div key={g.id} style={S.resultRow}>
-              <span style={S.resultLabel}>{g.concepto}</span>
-              <span style={{ ...S.resultValue, color: colors.red }}>{fmt(g.monto)}</span>
-            </div>
-          ))}
         </div>
-      )}
 
-      {tokenReparto && tokenReparto.operadores && tokenReparto.operadores.length > 0 && (
+        {/* Valor a consignar destacado */}
+        <div style={{
+          background: colors.greenDim, border: "1px solid rgba(16,185,129,0.3)",
+          borderRadius: 14, padding: 20, marginBottom: 14, textAlign: "center",
+        }}>
+          <div style={{ fontSize: 12, color: colors.green, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Valor a Consignar</div>
+          <div style={{ fontSize: 36, fontWeight: 800, color: colors.green, marginTop: 4 }}>{fmt(totales.aConsignar)}</div>
+        </div>
+
+        {/* Resumen financiero */}
         <div style={S.card}>
-          <div style={S.cardTitle}>🪙 Repartición Nuevo Ciclo</div>
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Tokens por operador</div>
-          {tokenReparto.operadores.map((r, i) => (
-            <div key={i} style={S.resultRow}>
-              <span style={S.resultLabel}>{r.nombre}</span>
-              <span style={S.resultValue}>{fmtNum(r.tokens)} tokens</span>
+          <div style={S.cardTitle}>💰 Resumen Financiero</div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Total liquidaciones ({liquidaciones.length})</span>
+            <span style={S.resultValue}>{fmt(totales.efectivoLiq)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Pagos QR descontados</span>
+            <span style={{ ...S.resultValue, color: colors.blue }}>{fmt(totales.qr)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Devoluciones efectivo</span>
+            <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.devoluciones)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Recaudo monedas (conteo físico)</span>
+            <span style={S.resultValue}>{fmt(totales.valorMonedasGlobal)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Producido máquinas (contadores)</span>
+            <span style={S.resultValue}>{fmt(totales.producidoMaq)}</span>
+          </div>
+          {totales.totalGastos > 0 && (
+            <div style={S.resultRow}>
+              <span style={{ ...S.resultLabel, color: colors.red }}>Gastos caja menor</span>
+              <span style={{ ...S.resultValue, color: colors.red }}>−{fmt(totales.totalGastos)}</span>
             </div>
-          ))}
-
+          )}
           <div style={S.divider} />
-
-          <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Base de efectivo</div>
-          <div style={S.resultRow}>
-            <span style={S.resultLabel}>Base recogida</span>
-            <span style={S.resultValue}>{fmt(tokenReparto.baseRecogida)}</span>
-          </div>
-          <div style={S.resultRow}>
-            <span style={S.resultLabel}>Base nueva dejada</span>
-            <span style={{ ...S.resultValue, color: colors.green }}>{fmt(tokenReparto.baseNueva)}</span>
+          <div style={{ ...S.resultRow, borderBottom: "none" }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>Total recaudo</span>
+            <span style={{ fontSize: 18, fontWeight: 800, color: colors.accent }}>{fmt(totales.totalRecaudo)}</span>
           </div>
         </div>
-      )}
 
-      <div style={{ ...S.card, background: colors.blueDim, borderColor: "rgba(59,130,246,0.25)", textAlign: "center" }}>
-        <div style={{ fontSize: 13, color: colors.blue, lineHeight: 1.7 }}>
-          📤 <strong>En producción:</strong> Este reporte se envía automáticamente a Google Sheets y notifica por email al administrador.
+        {/* Conteo físico */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>🔍 Conteo Físico vs Contadores</div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Σ TOKEN_DIA (contadores)</span>
+            <span style={S.resultValue}>{fmtNum(totales.sumaTokenDiaMaq)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Tokens físicos contados</span>
+            <span style={S.resultValue}>{fmtNum(totales.tokensMaq)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Diferencia tokens</span>
+            <span style={{ ...S.resultValue, color: totales.difTokensGlobal === 0 ? colors.green : colors.red }}>
+              {totales.difTokensGlobal === 0 ? "✓ OK" : fmtNum(totales.difTokensGlobal)}
+            </span>
+          </div>
+          <div style={S.divider} />
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Σ MONE_DIA (contadores)</span>
+            <span style={S.resultValue}>{fmt(totales.sumaMoneDiaMaq)}</span>
+          </div>
+          <div style={S.resultRow}>
+            <span style={S.resultLabel}>Efectivo físico contado</span>
+            <span style={S.resultValue}>{fmt(totales.valorMonedasGlobal)}</span>
+          </div>
+          <div style={{ ...S.resultRow, borderBottom: "none" }}>
+            <span style={S.resultLabel}>Diferencia efectivo</span>
+            <span style={{ ...S.resultValue, color: totales.difDineroGlobal === 0 ? colors.green : colors.red }}>
+              {totales.difDineroGlobal === 0 ? "✓ OK" : fmt(totales.difDineroGlobal)}
+            </span>
+          </div>
         </div>
+
+        {/* Detalle liquidaciones */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>🧾 Liquidaciones ({liquidaciones.length})</div>
+          {liquidaciones.map((l, i) => (
+            <div key={l.id} style={{ ...S.resultRow }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: colors.textBright }}>#{i + 1} {l.operador} <span style={{ fontSize: 11, color: colors.textDim }}>Rec: {l.numRecibo}</span></div>
+                <div style={{ fontSize: 11, color: colors.textDim }}>Tok: {fmtNum(l.tokensVendidos)} · QR: {fmt(l.qr)} · Dev: {fmt(l.devoluciones)}</div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>{fmt(l.efectivo)}</div>
+                {l.descuadre !== 0 && (
+                  <div style={{ fontSize: 11, color: l.descuadre > 0 ? colors.green : colors.red }}>Δ {fmt(l.descuadre)}</div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Detalle máquinas */}
+        <div style={S.card}>
+          <div style={S.cardTitle}>⚙️ Máquinas ({maquinas.length})</div>
+          {maquinas.map(m => (
+            <div key={m.id} style={{ ...S.resultRow }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: colors.textBright }}>{m.nombre}</div>
+                <div style={{ fontSize: 11, color: colors.textDim }}>GEN: {fmtNum(m.genAnterior)}→{fmtNum(m.genActual)} · TOKEN_DIA: {fmtNum(m.tokenDia)} · MONE_DIA: {fmt(m.moneDia)}</div>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 700, color: colors.green }}>{fmt(m.producido)}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Gastos */}
+        {gastos.length > 0 && (
+          <div style={S.card}>
+            <div style={S.cardTitle}>💸 Gastos ({gastos.length})</div>
+            {gastos.map(g => (
+              <div key={g.id} style={S.resultRow}>
+                <span style={S.resultLabel}>{g.concepto}</span>
+                <span style={{ ...S.resultValue, color: colors.red }}>{fmt(g.monto)}</span>
+              </div>
+            ))}
+            <div style={S.divider} />
+            <div style={{ ...S.resultRow, borderBottom: "none" }}>
+              <span style={{ ...S.resultLabel, fontWeight: 700 }}>Total gastos</span>
+              <span style={{ ...S.resultValue, color: colors.red }}>{fmt(totales.totalGastos)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Repartición */}
+        {tokenReparto && tokenReparto.operadores && tokenReparto.operadores.length > 0 && (
+          <div style={S.card}>
+            <div style={S.cardTitle}>🪙 Repartición Nuevo Ciclo</div>
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Tokens por operador</div>
+            {tokenReparto.operadores.map((r, i) => (
+              <div key={i} style={S.resultRow}>
+                <span style={S.resultLabel}>{r.nombre}</span>
+                <span style={S.resultValue}>{fmtNum(r.tokens)} tokens</span>
+              </div>
+            ))}
+
+            <div style={S.divider} />
+
+            <div style={{ fontSize: 12, fontWeight: 700, color: colors.textDim, marginBottom: 8, letterSpacing: 0.5, textTransform: "uppercase" }}>Base de efectivo</div>
+            <div style={S.resultRow}>
+              <span style={S.resultLabel}>Base recogida</span>
+              <span style={S.resultValue}>{fmt(tokenReparto.baseRecogida)}</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={S.resultLabel}>Base nueva dejada</span>
+              <span style={{ ...S.resultValue, color: colors.green }}>{fmt(tokenReparto.baseNueva)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Pie de reporte */}
+        <div style={{ textAlign: "center", padding: "16px 0 8px", fontSize: 11, color: colors.textDim }}>
+          Panzer Carwash — Reporte generado el {new Date().toLocaleDateString("es-CO")} a las {new Date().toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" })}
+        </div>
+
+      </div>{/* Fin del contenido capturado para PDF */}
+
+      {/* Botón compartir abajo también */}
+      <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+        <button
+          style={{ ...S.btnPrimary, background: `linear-gradient(135deg, #25D366, #128C7E)`, flex: 1 }}
+          onClick={generarPDF}
+          disabled={generandoPDF}
+        >
+          {generandoPDF ? "⏳ Generando..." : "📤 Descargar / Compartir PDF"}
+        </button>
       </div>
 
-      <button style={{ ...S.btnPrimary, marginTop: 8 }} onClick={onNewCiclo}>
+      <button style={{ ...S.btnPrimary, marginTop: 10 }} onClick={onNewCiclo}>
         🚀 Iniciar Nuevo Ciclo
       </button>
     </div>
