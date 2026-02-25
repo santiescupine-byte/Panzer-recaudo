@@ -1623,6 +1623,8 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
   const operadores = [...new Set(liquidaciones.map(l => l.operador).filter(Boolean))];
   const [reparto, setReparto] = useState(operadores.map(op => ({ nombre: op, tokens: "" })));
   const [modoReparto, setModoReparto] = useState("operadores"); // "operadores" o "sede"
+  const [ajusteTokens, setAjusteTokens] = useState(""); // + ingresos, - retiros
+  const [ajusteMotivo, setAjusteMotivo] = useState("");
 
   // Base de efectivo
   const baseConfigurada = getBase(sede);
@@ -1651,7 +1653,8 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
   const totalVendidosCiclo = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
   const totalDevTokensCiclo = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
   const totalSaldoEsperado = operadorData.reduce((s, o) => s + Math.max(o.saldoEsperado || 0, 0), 0);
-  const totalTokensDisponible = tokensMaq + totalSaldoEsperado;
+  const ajusteNum = Number(ajusteTokens) || 0;
+  const totalTokensDisponible = tokensMaq + totalSaldoEsperado + ajusteNum;
   const tokensRestante = totalTokensDisponible - totalTokensRepartido;
 
   // Detección de pérdida: tokens que deberían existir pero no están
@@ -1668,6 +1671,8 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
       modoReparto,
       operadores: modoReparto === "operadores" ? reparto : [],
       tokensTotalBase: totalTokensDisponible,
+      ajusteTokens: ajusteNum,
+      ajusteMotivo: ajusteMotivo,
       baseRecogida: baseRecogidaNum,
       baseNueva: baseNuevaNum,
       baseConfigurada,
@@ -1900,7 +1905,55 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
         }}>
           <div style={{ fontSize: 10, color: colors.textDim, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>Base total de tokens</div>
           <div style={{ fontSize: 32, fontWeight: 800, color: colors.accent, marginTop: 4 }}>{fmtNum(totalTokensDisponible)}</div>
+          {ajusteNum !== 0 && (
+            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 4 }}>
+              ({fmtNum(tokensMaq)} máq + {fmtNum(totalSaldoEsperado)} saldos {ajusteNum > 0 ? "+" : ""}{fmtNum(ajusteNum)} ajuste)
+            </div>
+          )}
         </div>
+      </div>
+
+      {/* Ajuste de tokens: retiros o ingresos */}
+      <div style={S.card}>
+        <div style={S.cardTitle}>🔄 Ajuste de Tokens (Retiros / Ingresos)</div>
+        <div style={{ fontSize: 12, color: colors.textDim, marginBottom: 14, lineHeight: 1.6 }}>
+          Si se retiraron tokens para llevar a otra sede o llegaron tokens de otro lugar, regístralo aquí. Usa número negativo para retiros (ej: -96) y positivo para ingresos (ej: 50).
+        </div>
+
+        <div style={S.row}>
+          <div style={S.col}>
+            <label style={S.label}>Cantidad (- retiro / + ingreso)</label>
+            <input
+              style={{ ...S.input, textAlign: "center", fontSize: 18, fontWeight: 700, borderColor: ajusteNum < 0 ? colors.red : ajusteNum > 0 ? colors.green : colors.border }}
+              type="number" inputMode="numeric" placeholder="0"
+              value={ajusteTokens}
+              onChange={e => setAjusteTokens(e.target.value)}
+            />
+          </div>
+        </div>
+
+        {ajusteTokens !== "" && ajusteNum !== 0 && (
+          <>
+            <label style={S.label}>Motivo del ajuste</label>
+            <input
+              style={S.input}
+              type="text" placeholder="Ej: Retiro para sede Marly, Ingreso desde Toberín..."
+              value={ajusteMotivo}
+              onChange={e => setAjusteMotivo(e.target.value)}
+            />
+          </>
+        )}
+
+        {ajusteNum < 0 && (
+          <div style={S.alertBox("error")}>
+            📤 Se retiran {fmtNum(Math.abs(ajusteNum))} tokens de esta sede. Base baja de {fmtNum(tokensMaq + totalSaldoEsperado)} a {fmtNum(totalTokensDisponible)}.
+          </div>
+        )}
+        {ajusteNum > 0 && (
+          <div style={S.alertBox("success")}>
+            📥 Ingresan {fmtNum(ajusteNum)} tokens a esta sede. Base sube de {fmtNum(tokensMaq + totalSaldoEsperado)} a {fmtNum(totalTokensDisponible)}.
+          </div>
+        )}
       </div>
 
       {/* Toggle modo de repartición */}
@@ -2417,6 +2470,16 @@ function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenRe
               <span style={S.resultLabel}>Base total de tokens</span>
               <span style={{ ...S.resultValue, color: colors.accent }}>{fmtNum(tokenReparto.tokensTotalBase)}</span>
             </div>
+            {tokenReparto.ajusteTokens && tokenReparto.ajusteTokens !== 0 && (
+              <div style={S.resultRow}>
+                <span style={{ ...S.resultLabel, color: tokenReparto.ajusteTokens < 0 ? colors.red : colors.green }}>
+                  {tokenReparto.ajusteTokens < 0 ? "📤 Retiro" : "📥 Ingreso"} tokens {tokenReparto.ajusteMotivo ? `(${tokenReparto.ajusteMotivo})` : ""}
+                </span>
+                <span style={{ ...S.resultValue, color: tokenReparto.ajusteTokens < 0 ? colors.red : colors.green }}>
+                  {tokenReparto.ajusteTokens > 0 ? "+" : ""}{fmtNum(tokenReparto.ajusteTokens)}
+                </span>
+              </div>
+            )}
             <div style={S.resultRow}>
               <span style={S.resultLabel}>Modo</span>
               <span style={{ ...S.resultValue, fontSize: 13 }}>
