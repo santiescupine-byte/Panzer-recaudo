@@ -1656,6 +1656,16 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
   const historialSede = historialTokens || HISTORIAL_TOKENS_OPERADOR[sede] || {};
   const baseSede = historialSede['BASE_SEDE'] || null; // Si existe, el ciclo anterior fue modo "sede"
   
+  // DEBUG: Ver qué datos llegan
+  console.log('=== DEBUG HISTORIAL TOKENS ===');
+  console.log('sede:', sede);
+  console.log('historialTokens (prop):', JSON.stringify(historialTokens));
+  console.log('GLOBAL[sede]:', JSON.stringify(HISTORIAL_TOKENS_OPERADOR[sede]));
+  console.log('historialSede final:', JSON.stringify(historialSede));
+  console.log('baseSede:', JSON.stringify(baseSede));
+  console.log('operadores:', operadores);
+  console.log('=== FIN DEBUG ===');
+  
   const operadorData = operadores.map(nombre => {
     const normalizado = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
     const historial = historialSede[normalizado] || historialSede[nombre] || null;
