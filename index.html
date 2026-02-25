@@ -525,7 +525,7 @@ function App() {
     }
   }, [ciclo, liquidaciones, maquinas, gastos, tokenReparto, conteoFisico, tab, guardarLocal]);
 
-  const restaurarCiclo = () => {
+  const restaurarCiclo = async () => {
     if (savedData) {
       setCiclo(savedData.ciclo);
       setLiquidaciones(savedData.liquidaciones || []);
@@ -534,6 +534,20 @@ function App() {
       setTokenReparto(savedData.tokenReparto || []);
       setConteoFisico(savedData.conteoFisico || { tokensFisicos: "", efectivoTotal: "" });
       setTab(savedData.tab || "liquidaciones");
+
+      // Cargar historiales de la sede (igual que startCiclo)
+      if (savedData.ciclo?.sede) {
+        setApiLoading(true);
+        try {
+          const [hm, ht] = await Promise.all([
+            apiGet('getHistorialMaquinas', { sede: savedData.ciclo.sede }),
+            apiGet('getHistorialTokens', { sede: savedData.ciclo.sede }),
+          ]);
+          if (hm) { HISTORIAL_MAQUINAS[savedData.ciclo.sede] = hm; setHistMaq(hm); }
+          if (ht) { HISTORIAL_TOKENS_OPERADOR[savedData.ciclo.sede] = ht; setHistTok(ht); }
+        } catch(e) {}
+        setApiLoading(false);
+      }
     }
     setShowRestore(false);
     setSavedData(null);
@@ -832,6 +846,7 @@ function App() {
             tokensMaq={totales.tokensMaq}
             sede={ciclo.sede}
             gastos={gastos}
+            historialTokens={histTok}
             onSave={(reparto) => { setTokenReparto(reparto); setSubPage(null); }}
           />
         )}
@@ -1619,7 +1634,7 @@ function ConteoFisicoGlobal({ maquinas, conteoFisico, totales, onSave }) {
 // ============================================================
 // REPARTO TOKENS + BASE EFECTIVO
 // ============================================================
-function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
+function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens, onSave }) {
   const operadores = [...new Set(liquidaciones.map(l => l.operador).filter(Boolean))];
   const [reparto, setReparto] = useState(operadores.map(op => ({ nombre: op, tokens: "" })));
   const [modoReparto, setModoReparto] = useState("operadores"); // "operadores" o "sede"
@@ -1637,22 +1652,45 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
   const tokensRestantesOps = liquidaciones.reduce((s, l) => s + (Number(l.tokensRestantes) || 0), 0);
   const totalTokensRepartido = reparto.reduce((s, r) => s + (Number(r.tokens) || 0), 0);
 
-  // Trazabilidad por operador: cruzar historial con liquidaciones de este ciclo
-  const historialSede = HISTORIAL_TOKENS_OPERADOR[sede] || {};
+  // Trazabilidad por operador: usar prop historialTokens O la variable global como fallback
+  const historialSede = historialTokens || HISTORIAL_TOKENS_OPERADOR[sede] || {};
+  const baseSede = historialSede['BASE_SEDE'] || null; // Si existe, el ciclo anterior fue modo "sede"
+  
   const operadorData = operadores.map(nombre => {
     const normalizado = nombre.charAt(0).toUpperCase() + nombre.slice(1).toLowerCase();
     const historial = historialSede[normalizado] || historialSede[nombre] || null;
     const liqsDeEsteOp = liquidaciones.filter(l => l.operador === nombre);
     const vendidosEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.tokensVendidos) || 0), 0);
     const devTokensEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.devTokens) || 0), 0);
-    const saldoEsperado = historial ? historial.saldo - vendidosEsteC - devTokensEsteC : null;
+    
+    let saldoEsperado;
+    if (baseSede) {
+      // Ciclo anterior fue modo "sede": la base era compartida
+      // No hay saldo individual, solo se sabe cuánto vendió cada uno
+      // El saldo individual no aplica, se calcula contra la base total
+      saldoEsperado = null; // Se manejará a nivel sede
+    } else if (historial) {
+      saldoEsperado = historial.saldo - vendidosEsteC - devTokensEsteC;
+    } else {
+      saldoEsperado = null;
+    }
     return { nombre, historial, vendidosEsteC, devTokensEsteC, saldoEsperado };
   });
 
-  const totalSaldoAnterior = operadorData.reduce((s, o) => s + (o.historial?.saldo || 0), 0);
+  // Calcular saldo esperado total
+  let totalSaldoAnterior, totalSaldoEsperado;
+  if (baseSede) {
+    // Modo sede anterior: la base total menos lo vendido por todos
+    totalSaldoAnterior = baseSede.saldo || 0;
+    const totalVendido = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
+    const totalDev = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
+    totalSaldoEsperado = Math.max(totalSaldoAnterior - totalVendido - totalDev, 0);
+  } else {
+    totalSaldoAnterior = operadorData.reduce((s, o) => s + (o.historial?.saldo || 0), 0);
+    totalSaldoEsperado = operadorData.reduce((s, o) => s + Math.max(o.saldoEsperado || 0, 0), 0);
+  }
   const totalVendidosCiclo = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
   const totalDevTokensCiclo = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
-  const totalSaldoEsperado = operadorData.reduce((s, o) => s + Math.max(o.saldoEsperado || 0, 0), 0);
   const ajusteNum = Number(ajusteTokens) || 0;
   const totalTokensDisponible = tokensMaq + totalSaldoEsperado + ajusteNum;
   const tokensRestante = totalTokensDisponible - totalTokensRepartido;
@@ -1784,13 +1822,50 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
           Aquí se cruza la información del ciclo anterior con las liquidaciones actuales para detectar tokens faltantes. Cada token perdido es dinero perdido.
         </div>
 
+        {/* Si el ciclo anterior fue modo sede, mostrar resumen global primero */}
+        {baseSede && (
+          <div style={{
+            background: colors.surface,
+            border: `1px solid ${colors.blue}30`,
+            borderRadius: 12, padding: 16, marginBottom: 14,
+          }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.blue }}>🏢 Base compartida de sede (ciclo anterior)</div>
+            </div>
+            <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Base total</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: colors.accent }}>{fmtNum(baseSede.saldo)}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Vendidos total</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: colors.blue }}>−{fmtNum(totalVendidosCiclo)}</div>
+              </div>
+              <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Devoluciones</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: colors.purple }}>−{fmtNum(totalDevTokensCiclo)}</div>
+              </div>
+              <div style={{
+                flex: 1, minWidth: 80, borderRadius: 8, padding: "8px 10px", textAlign: "center",
+                background: totalSaldoEsperado >= 0 ? colors.greenDim : colors.redDim,
+              }}>
+                <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Debería quedar</div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: totalSaldoEsperado >= 0 ? colors.green : colors.red }}>{fmtNum(totalSaldoEsperado)}</div>
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: colors.textDim, fontStyle: "italic" }}>
+              En modo "base en sede" los 3 operadores comparten la base. Abajo se detalla cuánto vendió cada uno.
+            </div>
+          </div>
+        )}
+
         {/* Tabla de trazabilidad por operador */}
         {operadorData.map((op, i) => {
-          const tieneHistorial = op.historial !== null;
+          const tieneHistorial = op.historial !== null && !baseSede;
           const vendidosCiclo = op.vendidosEsteC;
           const devTokensCiclo = op.devTokensEsteC;
           const saldoEsperado = tieneHistorial ? op.historial.saldo - vendidosCiclo - devTokensCiclo : null;
-          const estado = saldoEsperado === null ? "sin_historial" : saldoEsperado >= 0 ? "ok" : "faltante";
+          const estado = baseSede ? "sede" : saldoEsperado === null ? "sin_historial" : saldoEsperado >= 0 ? "ok" : "faltante";
 
           return (
             <div key={i} style={{
@@ -1803,6 +1878,7 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
                 {estado === "faltante" && <span style={S.badge(colors.red, colors.redDim)}>⚠️ FALTANTE</span>}
                 {estado === "ok" && tieneHistorial && <span style={S.badge(colors.green, colors.greenDim)}>✓ OK</span>}
                 {estado === "sin_historial" && <span style={S.badge(colors.accent, colors.accentDim)}>NUEVO</span>}
+                {estado === "sede" && <span style={S.badge(colors.blue, colors.blueDim)}>🏢 SEDE</span>}
               </div>
 
               {tieneHistorial ? (
@@ -1835,6 +1911,17 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, onSave }) {
                     </div>
                   )}
                 </>
+              ) : baseSede ? (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Vendidos</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: colors.blue }}>−{fmtNum(vendidosCiclo)}</div>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                    <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Dev. Tokens</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: colors.purple }}>−{fmtNum(devTokensCiclo)}</div>
+                  </div>
+                </div>
               ) : (
                 <div style={{ fontSize: 12, color: colors.textDim, fontStyle: "italic" }}>
                   Sin historial del ciclo anterior. Vendió {fmtNum(vendidosCiclo)} tokens en este ciclo.
