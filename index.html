@@ -1684,10 +1684,10 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
     totalSaldoAnterior = baseSede.saldo || 0;
     const totalVendido = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
     const totalDev = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
-    totalSaldoEsperado = Math.max(totalSaldoAnterior - totalVendido - totalDev, 0);
+    totalSaldoEsperado = totalSaldoAnterior - totalVendido - totalDev;
   } else {
     totalSaldoAnterior = operadorData.reduce((s, o) => s + (o.historial?.saldo || 0), 0);
-    totalSaldoEsperado = operadorData.reduce((s, o) => s + Math.max(o.saldoEsperado || 0, 0), 0);
+    totalSaldoEsperado = operadorData.reduce((s, o) => s + (o.saldoEsperado || 0), 0);
   }
   const totalVendidosCiclo = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
   const totalDevTokensCiclo = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
@@ -2537,6 +2537,10 @@ function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenRe
               <div style={S.resultRow}>
                 <span style={S.resultLabel}>Σ Vendidos ciclo</span>
                 <span style={{ ...S.resultValue, color: colors.blue }}>−{fmtNum(tokenReparto.totalVendidosCiclo)}</span>
+              </div>
+              <div style={S.resultRow}>
+                <span style={S.resultLabel}>Σ Dev. tokens ciclo</span>
+                <span style={{ ...S.resultValue, color: colors.purple }}>−{fmtNum(tokenReparto.totalDevTokensCiclo)}</span>
               </div>
               {tokenReparto.tokensPerdidos > 0 && (
                 <div style={{ ...S.resultRow, borderBottom: "none" }}>
