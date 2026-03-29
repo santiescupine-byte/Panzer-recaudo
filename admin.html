@@ -1,0 +1,1178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panzer Admin — Control de Recaudo</title>
+  <meta name="theme-color" content="#060a10">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#060a10;--bg2:#0c1219;--sf:#111827;--sf2:#1a2332;--sf3:#222f42;
+      --bd:#243049;--bd2:#2d3d5a;
+      --amber:#f59e0b;--amber-d:rgba(245,158,11,0.10);--amber-g:rgba(245,158,11,0.04);
+      --blue:#3b82f6;--blue-d:rgba(59,130,246,0.10);
+      --green:#10b981;--green-d:rgba(16,185,129,0.08);
+      --red:#ef4444;--red-d:rgba(239,68,68,0.08);
+      --purple:#8b5cf6;--purple-d:rgba(139,92,246,0.10);
+      --cyan:#06b6d4;--cyan-d:rgba(6,182,212,0.10);
+      --t:#e2e8f0;--td:#64748b;--tb:#f8fafc;
+      --font:'Outfit',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
+      --r:14px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{background:var(--bg);color:var(--t);font-family:var(--font);overflow-x:hidden;}
+    input,select,button{font-family:inherit;}
+    ::-webkit-scrollbar{width:5px;height:5px;}
+    ::-webkit-scrollbar-track{background:var(--bg2);}
+    ::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px;}
+    ::selection{background:rgba(245,158,11,0.2);}
+
+    #loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s;}
+    #loading.hide{opacity:0;pointer-events:none;}
+    .loader{width:44px;height:44px;border:3px solid var(--bd);border-top-color:var(--amber);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:18px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    .shell{max-width:1440px;margin:0 auto;padding:0 20px 40px;}
+
+    /* Topbar */
+    .topbar{position:sticky;top:0;z-index:100;padding:14px 20px;background:linear-gradient(180deg,var(--bg) 70%,transparent);display:flex;align-items:center;gap:14px;justify-content:space-between;}
+    .topbar-left{display:flex;align-items:center;gap:12px;}
+    .topbar-logo{height:32px;}
+    .topbar-title{font-size:18px;font-weight:800;color:var(--amber);letter-spacing:-.5px;}
+    .topbar-sub{font-size:11px;color:var(--td);font-weight:500;}
+    .topbar-right{display:flex;align-items:center;gap:8px;}
+    .dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+    .dot.on{background:var(--green);box-shadow:0 0 8px var(--green);animation:pulse 2s infinite;}
+    .dot.off{background:var(--red);}
+    @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+    .btn-r{background:var(--sf2);border:1px solid var(--bd);border-radius:10px;padding:7px 14px;color:var(--amber);font-size:11px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:5px;transition:all .2s;}
+    .btn-r:hover{border-color:var(--amber);background:var(--amber-d);}
+    .btn-r.spin svg{animation:spin .7s linear infinite;}
+
+    /* Filters */
+    .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;padding:14px 16px;background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);}
+    .fg{display:flex;flex-direction:column;gap:3px;}
+    .fl{font-size:9px;font-weight:700;color:var(--td);text-transform:uppercase;letter-spacing:.8px;}
+    .fi,.fs{background:var(--sf2);border:1px solid var(--bd);border-radius:9px;padding:7px 11px;color:var(--tb);font-size:12px;font-weight:500;outline:none;min-width:130px;font-family:var(--font);}
+    .fi:focus,.fs:focus{border-color:var(--amber);}
+
+    /* Stats */
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin-bottom:20px;}
+    .st{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:16px 18px;position:relative;overflow:hidden;transition:border-color .3s;cursor:default;}
+    .st:hover{border-color:var(--bd2);}
+    .st::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;}
+    .st.a::before{background:linear-gradient(90deg,var(--amber),transparent);}
+    .st.g::before{background:linear-gradient(90deg,var(--green),transparent);}
+    .st.b::before{background:linear-gradient(90deg,var(--blue),transparent);}
+    .st.r::before{background:linear-gradient(90deg,var(--red),transparent);}
+    .st.p::before{background:linear-gradient(90deg,var(--purple),transparent);}
+    .st.c::before{background:linear-gradient(90deg,var(--cyan),transparent);}
+    .st-l{font-size:10px;font-weight:700;color:var(--td);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;}
+    .st-v{font-size:24px;font-weight:800;letter-spacing:-1px;font-family:var(--mono);}
+    .st-s{font-size:10px;color:var(--td);margin-top:3px;font-weight:500;}
+
+    /* Cards */
+    .card{background:var(--sf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:14px;}
+    .card-t{font-size:15px;font-weight:800;color:var(--tb);margin-bottom:14px;display:flex;align-items:center;gap:8px;letter-spacing:-.2px;}
+    .sep{height:1px;background:var(--bd);margin:12px 0;}
+
+    /* Ciclo selector cards */
+    .ciclo-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:10px;margin-bottom:20px;}
+    .cc{background:var(--sf);border:2px solid var(--bd);border-radius:var(--r);padding:16px 18px;cursor:pointer;transition:all .25s;}
+    .cc:hover{border-color:var(--bd2);background:var(--sf2);}
+    .cc.active{border-color:var(--amber);background:var(--amber-g);}
+    .cc-top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;}
+    .cc-sede{font-size:16px;font-weight:800;color:var(--tb);}
+    .cc-meta{font-size:11px;color:var(--td);margin-top:2px;}
+    .cc-val{font-size:20px;font-weight:800;color:var(--green);font-family:var(--mono);text-align:right;}
+    .cc-val-l{font-size:9px;color:var(--td);text-transform:uppercase;letter-spacing:.5px;}
+    .badge{display:inline-flex;align-items:center;gap:3px;padding:3px 9px;border-radius:16px;font-size:10px;font-weight:700;}
+    .badge.g{color:var(--green);background:var(--green-d);}
+    .badge.r{color:var(--red);background:var(--red-d);}
+    .badge.a{color:var(--amber);background:var(--amber-d);}
+    .badge.b{color:var(--blue);background:var(--blue-d);}
+    .badge.p{color:var(--purple);background:var(--purple-d);}
+
+    /* Detail panels */
+    .panels{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+    @media(max-width:900px){.panels{grid-template-columns:1fr;}}
+    .panel-full{grid-column:1/-1;}
+
+    /* Comparison bars */
+    .cmp{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sf2);border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;}
+    .cmp-label{font-size:12px;color:var(--td);min-width:100px;font-weight:600;}
+    .cmp-bars{flex:1;display:flex;flex-direction:column;gap:4px;}
+    .cmp-bar-row{display:flex;align-items:center;gap:8px;}
+    .cmp-bar-track{flex:1;height:8px;background:var(--sf3);border-radius:4px;overflow:hidden;position:relative;}
+    .cmp-bar-fill{height:100%;border-radius:4px;transition:width .8s ease-out;}
+    .cmp-bar-label{font-size:10px;color:var(--td);min-width:50px;font-family:var(--mono);font-weight:600;}
+    .cmp-bar-val{font-size:12px;font-weight:700;min-width:70px;text-align:right;font-family:var(--mono);}
+    .cmp-dif{font-size:13px;font-weight:800;min-width:80px;text-align:right;font-family:var(--mono);}
+
+    /* Operator cards */
+    .op-card{background:var(--sf2);border:1px solid var(--bd);border-radius:12px;padding:14px 16px;margin-bottom:8px;transition:border-color .2s;}
+    .op-card.alert{border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.03);}
+    .op-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+    .op-name{font-size:15px;font-weight:700;color:var(--tb);}
+    .op-flow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+    .op-pill{text-align:center;padding:6px 10px;border-radius:8px;background:var(--sf);border:1px solid var(--bd);min-width:65px;}
+    .op-pill-l{font-size:8px;font-weight:700;color:var(--td);text-transform:uppercase;letter-spacing:.5px;}
+    .op-pill-v{font-size:16px;font-weight:800;margin-top:2px;font-family:var(--mono);}
+    .op-arrow{font-size:14px;color:var(--td);}
+
+    /* Reparto */
+    .rep-bar{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--sf2);border:1px solid var(--bd);border-radius:10px;margin-bottom:6px;}
+    .rep-name{font-size:13px;font-weight:700;color:var(--tb);min-width:100px;}
+    .rep-track{flex:1;height:12px;background:var(--sf3);border-radius:6px;overflow:hidden;}
+    .rep-fill{height:100%;border-radius:6px;transition:width .8s ease-out;}
+    .rep-val{font-size:14px;font-weight:800;min-width:80px;text-align:right;font-family:var(--mono);color:var(--amber);}
+
+    /* Row detail */
+    .dr{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--bd);font-size:13px;}
+    .dr:last-child{border-bottom:none;}
+    .dr .l{color:var(--td);}
+    .dr .v{font-weight:700;color:var(--tb);font-family:var(--mono);}
+
+    /* Highlight */
+    .hl{text-align:center;padding:18px;border-radius:var(--r);margin-bottom:14px;}
+    .hl.g{background:var(--green-d);border:1px solid rgba(16,185,129,.2);}
+    .hl.r{background:var(--red-d);border:1px solid rgba(239,68,68,.2);}
+    .hl.a{background:var(--amber-d);border:1px solid rgba(245,158,11,.2);}
+    .hl .big{font-size:32px;font-weight:800;font-family:var(--mono);letter-spacing:-2px;}
+    .hl .sm{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;}
+
+    /* Alert banner */
+    .alert-banner{padding:12px 16px;border-radius:12px;display:flex;align-items:center;gap:10px;font-size:12px;font-weight:600;margin-bottom:10px;}
+    .alert-banner.r{background:var(--red-d);border:1px solid rgba(239,68,68,.2);color:var(--red);}
+    .alert-banner.g{background:var(--green-d);border:1px solid rgba(16,185,129,.2);color:var(--green);}
+    .alert-banner.a{background:var(--amber-d);border:1px solid rgba(245,158,11,.2);color:var(--amber);}
+
+    /* Section title */
+    .stitle{font-size:17px;font-weight:800;color:var(--tb);margin:24px 0 14px;display:flex;align-items:center;gap:8px;letter-spacing:-.3px;}
+
+    /* Tabs */
+    .tabs{display:flex;gap:3px;margin-bottom:16px;background:var(--sf);border-radius:11px;padding:3px;border:1px solid var(--bd);}
+    .tab{flex:1;padding:9px 12px;border:none;border-radius:9px;cursor:pointer;font-size:11px;font-weight:700;font-family:var(--font);transition:all .2s;background:transparent;color:var(--td);text-align:center;}
+    .tab.on{background:var(--amber);color:#000;}
+    .tab:hover:not(.on){color:var(--t);}
+
+    /* Empty */
+    .empty{text-align:center;padding:50px 20px;color:var(--td);}
+    .empty .ic{font-size:50px;margin-bottom:10px;}
+    .empty .tt{font-size:15px;font-weight:700;color:var(--tb);margin-bottom:4px;}
+
+    @media(max-width:768px){
+      .shell{padding:0 10px 40px;}
+      .topbar{padding:10px;}
+      .stats{grid-template-columns:1fr 1fr;}
+      .st-v{font-size:18px;}
+      .filters{flex-direction:column;}
+      .fi,.fs{min-width:100%;}
+      .ciclo-cards{grid-template-columns:1fr;}
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="loader"></div>
+    <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" style="width:150px;margin-bottom:10px;" alt="Panzer">
+    <div style="font-size:12px;color:var(--td);">Cargando panel de control...</div>
+  </div>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+
+  <script type="text/babel">
+const {useState,useEffect,useMemo,useCallback} = React;
+
+const API_URL = 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec';
+
+async function apiGet(action, params={}) {
+  const url = new URL(API_URL);
+  url.searchParams.set('action', action);
+  for (const [k,v] of Object.entries(params)) url.searchParams.set(k,v);
+  try { const r = await fetch(url.toString()); return await r.json(); } catch(e) { return null; }
+}
+
+// ============================================================
+// DEMO DATA — basado en el PDF real de Bolivariana 28/3/2026
+// ============================================================
+const DEMO = [
+  {
+    id:"C001", sede:"Bolivariana", tesorero:"Brahian Velez", fecha:"28/3/2026", hora:"17:23", estado:"cerrado",
+    liquidaciones:[
+      {operador:"junior",numRecibo:"",tokensBase:450,tokensVendidos:90,devTokens:0,valor:673300,qr:67500,devoluciones:0,efectivo:605800,efectivoContado:605800,descuadre:0,tokensRestantes:360},
+      {operador:"williana",numRecibo:"",tokensBase:207,tokensVendidos:102,devTokens:0,valor:721500,qr:72500,devoluciones:0,efectivo:649000,efectivoContado:649000,descuadre:0,tokensRestantes:105},
+      {operador:"junior",numRecibo:"",tokensBase:360,tokensVendidos:47,devTokens:0,valor:365800,qr:91500,devoluciones:0,efectivo:274300,efectivoContado:274300,descuadre:0,tokensRestantes:313},
+      {operador:"junior",numRecibo:"",tokensBase:313,tokensVendidos:29,devTokens:20,valor:262600,qr:30000,devoluciones:0,efectivo:232600,efectivoContado:232600,descuadre:0,tokensRestantes:264},
+      {operador:"Josue",numRecibo:"",tokensBase:300,tokensVendidos:96,devTokens:0,valor:664000,qr:44000,devoluciones:0,efectivo:620000,efectivoContado:620000,descuadre:0,tokensRestantes:204},
+      {operador:"williana",numRecibo:"",tokensBase:105,tokensVendidos:64,devTokens:0,valor:440000,qr:85000,devoluciones:0,efectivo:355000,efectivoContado:355000,descuadre:0,tokensRestantes:41},
+      {operador:"Josue",numRecibo:"",tokensBase:204,tokensVendidos:48,devTokens:0,valor:385000,qr:70000,devoluciones:0,efectivo:315000,efectivoContado:315000,descuadre:0,tokensRestantes:156},
+      {operador:"Josue",numRecibo:"",tokensBase:156,tokensVendidos:47,devTokens:13,valor:339600,qr:40000,devoluciones:0,efectivo:299600,efectivoContado:299600,descuadre:0,tokensRestantes:96},
+      {operador:"williana",numRecibo:"",tokensBase:41,tokensVendidos:77,devTokens:17,valor:556000,qr:40000,devoluciones:0,efectivo:516000,efectivoContado:516000,descuadre:0,tokensRestantes:-53},
+    ],
+    maquinas:[
+      {nombre:"Máquina 5",genAnterior:21906500,genActual:22963000,genTokenAnterior:0,genTokenActual:0,tokenDia:159,moneDia:102500,producido:1056500},
+      {nombre:"Máquina 4",genAnterior:17330500,genActual:18086000,genTokenAnterior:0,genTokenActual:0,tokenDia:118,moneDia:47500,producido:755500},
+      {nombre:"Máquina 3",genAnterior:23618500,genActual:24505500,genTokenAnterior:0,genTokenActual:0,tokenDia:132,moneDia:95000,producido:887000},
+      {nombre:"Máquina 2",genAnterior:32749000,genActual:33413000,genTokenAnterior:0,genTokenActual:0,tokenDia:94,moneDia:100000,producido:664000},
+      {nombre:"Máquina 1",genAnterior:21270500,genActual:22381000,genTokenAnterior:0,genTokenActual:0,tokenDia:168,moneDia:102500,producido:1110500},
+      {nombre:"Canillita",genAnterior:8123500,genActual:8166500,genTokenAnterior:0,genTokenActual:0,tokenDia:0,moneDia:43000,producido:43000},
+      {nombre:"Aspiradora",genAnterior:8923000,genActual:9167500,genTokenAnterior:0,genTokenActual:0,tokenDia:7,moneDia:202500,producido:244500},
+    ],
+    conteoFisico:{tokensFisicos:674,efectivoTotal:691500},
+    gastos:[
+      {concepto:"tayrona",monto:105400},
+      {concepto:"cocacola",monto:189600},
+      {concepto:"papeles",monto:57600},
+      {concepto:"papeles",monto:36500},
+    ],
+    tokenReparto:{
+      modoReparto:"operadores",
+      tokensTotalBase:981,
+      ajusteTokens:0, ajusteMotivo:"",
+      baseRecogida:0, baseNueva:1100000, baseConfigurada:1100000,
+      totalGastosDeSede:389100,
+      tokensMaq:674,
+      totalSaldoAnterior:957,
+      totalVendidosCiclo:600,
+      totalDevTokensCiclo:50,
+      tokensPerdidos:0,
+      operadores:[
+        {nombre:"junior",tokens:450},
+        {nombre:"williana",tokens:228},
+        {nombre:"Josue",tokens:300},
+      ],
+      controlTokens:[
+        {nombre:"junior",historial:{saldo:450},vendidosEsteC:166,devTokensEsteC:20,saldoEsperado:264},
+        {nombre:"williana",historial:{saldo:207},vendidosEsteC:243,devTokensEsteC:17,saldoEsperado:-53},
+        {nombre:"Josue",historial:{saldo:300},vendidosEsteC:191,devTokensEsteC:13,saldoEsperado:96},
+      ],
+    },
+  },
+  {
+    id:"C002", sede:"Toberín", tesorero:"Carlos Méndez", fecha:"28/3/2026", hora:"09:15", estado:"cerrado",
+    liquidaciones:[
+      {operador:"Johan",numRecibo:"89-101",tokensBase:500,tokensVendidos:120,devTokens:5,valor:960000,qr:120000,devoluciones:0,efectivo:840000,efectivoContado:840000,descuadre:0,tokensRestantes:375},
+      {operador:"Kevin",numRecibo:"89-102",tokensBase:400,tokensVendidos:85,devTokens:0,valor:680000,qr:80000,devoluciones:10000,efectivo:590000,efectivoContado:588000,descuadre:-2000,tokensRestantes:315},
+      {operador:"Nicolas",numRecibo:"89-103",tokensBase:350,tokensVendidos:145,devTokens:8,valor:1160000,qr:200000,devoluciones:0,efectivo:960000,efectivoContado:960000,descuadre:0,tokensRestantes:197},
+    ],
+    maquinas:[
+      {nombre:"Máquina 1",genAnterior:78155000,genActual:79420000,tokenDia:177,moneDia:885000,producido:1265000},
+      {nombre:"Máquina 2",genAnterior:52861500,genActual:53750000,tokenDia:135,moneDia:675000,producido:888500},
+      {nombre:"Máquina 3",genAnterior:74770000,genActual:75980000,tokenDia:220,moneDia:990000,producido:1210000},
+      {nombre:"Aspiradora",genAnterior:14799000,genActual:15100000,tokenDia:0,moneDia:301000,producido:301000},
+    ],
+    conteoFisico:{tokensFisicos:530,efectivoTotal:2849000},
+    gastos:[{concepto:"Shampoo concentrado",monto:85000},{concepto:"Reparación pistola",monto:45000}],
+    tokenReparto:{
+      modoReparto:"operadores",tokensTotalBase:1417,ajusteTokens:0,
+      baseRecogida:870000,baseNueva:1000000,baseConfigurada:1000000,totalGastosDeSede:130000,
+      tokensMaq:530,totalSaldoAnterior:1250,totalVendidosCiclo:350,totalDevTokensCiclo:13,tokensPerdidos:0,
+      operadores:[{nombre:"Johan",tokens:500},{nombre:"Kevin",tokens:417},{nombre:"Nicolas",tokens:500}],
+      controlTokens:[
+        {nombre:"Johan",historial:{saldo:500},vendidosEsteC:120,devTokensEsteC:5,saldoEsperado:375},
+        {nombre:"Kevin",historial:{saldo:400},vendidosEsteC:85,devTokensEsteC:0,saldoEsperado:315},
+        {nombre:"Nicolas",historial:{saldo:350},vendidosEsteC:145,devTokensEsteC:8,saldoEsperado:197},
+      ],
+    },
+  },
+  {
+    id:"C003", sede:"San Felipe", tesorero:"Ana Gómez", fecha:"27/3/2026", hora:"10:30", estado:"cerrado",
+    liquidaciones:[
+      {operador:"Camilo",numRecibo:"SF-501",tokensBase:400,tokensVendidos:110,devTokens:3,valor:880000,qr:150000,devoluciones:0,efectivo:730000,efectivoContado:730000,descuadre:0,tokensRestantes:287},
+      {operador:"Andrea",numRecibo:"SF-502",tokensBase:350,tokensVendidos:90,devTokens:0,valor:720000,qr:100000,devoluciones:0,efectivo:620000,efectivoContado:618000,descuadre:-2000,tokensRestantes:260},
+    ],
+    maquinas:[
+      {nombre:"Máquina 1",genAnterior:65420000,genActual:66300000,tokenDia:130,moneDia:650000,producido:880000},
+      {nombre:"Máquina 2",genAnterior:48900000,genActual:49580000,tokenDia:105,moneDia:525000,producido:680000},
+      {nombre:"Aspiradora",genAnterior:11500000,genActual:11750000,tokenDia:0,moneDia:250000,producido:250000},
+    ],
+    conteoFisico:{tokensFisicos:233,efectivoTotal:1423000},
+    gastos:[{concepto:"Cera líquida",monto:62000}],
+    tokenReparto:{
+      modoReparto:"sede",tokensTotalBase:780,ajusteTokens:-50,ajusteMotivo:"Envío a Chapinero",
+      baseRecogida:938000,baseNueva:1000000,baseConfigurada:1000000,totalGastosDeSede:62000,
+      tokensMaq:233,totalSaldoAnterior:750,totalVendidosCiclo:200,totalDevTokensCiclo:3,tokensPerdidos:0,
+      controlTokens:[
+        {nombre:"Camilo",historial:{saldo:400},vendidosEsteC:110,devTokensEsteC:3,saldoEsperado:287},
+        {nombre:"Andrea",historial:{saldo:350},vendidosEsteC:90,devTokensEsteC:0,saldoEsperado:260},
+      ],
+    },
+  },
+];
+
+const fmt = n => "$"+(Number(n)||0).toLocaleString("es-CO");
+const fN = n => (Number(n)||0).toLocaleString("es-CO");
+
+function App(){
+  const [ciclos,setCiclos]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [refreshing,setRefreshing]=useState(false);
+  const [apiStatus,setApiStatus]=useState("loading");
+  const [filtroSede,setFiltroSede]=useState("todas");
+  const [selCiclo,setSelCiclo]=useState(null);
+  const [detTab,setDetTab]=useState("comparacion");
+
+  const cargar=useCallback(async(ref)=>{
+    if(ref) setRefreshing(true);
+    try{
+      const d=await apiGet('getCiclos');
+      if(d&&Array.isArray(d)&&d.length>0){setCiclos(d);setApiStatus("live");}
+      else{setCiclos(DEMO);setApiStatus("offline");}
+    }catch(e){setCiclos(DEMO);setApiStatus("offline");}
+    setLoading(false);setRefreshing(false);
+  },[]);
+
+  useEffect(()=>{cargar(false);},[cargar]);
+
+  const sedes=useMemo(()=>[...new Set(ciclos.map(c=>c.sede))],[ciclos]);
+  const filtered=useMemo(()=>ciclos.filter(c=>filtroSede==="todas"||c.sede===filtroSede),[ciclos,filtroSede]);
+
+  // Global stats
+  const gStats=useMemo(()=>{
+    const cf=filtered;
+    let recaudo=0,gastos=0,tokVend=0,tokDev=0,descuadres=0,alertas=0,producido=0;
+    cf.forEach(c=>{
+      const el=c.liquidaciones.reduce((s,l)=>s+(Number(l.efectivo)||0),0);
+      const em=Number(c.conteoFisico?.efectivoTotal)||0;
+      recaudo+=el+em;
+      gastos+=(c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0);
+      tokVend+=c.liquidaciones.reduce((s,l)=>s+(Number(l.tokensVendidos)||0),0);
+      tokDev+=c.liquidaciones.reduce((s,l)=>s+(Number(l.devTokens)||0),0);
+      descuadres+=c.liquidaciones.reduce((s,l)=>s+Math.abs(Number(l.descuadre)||0),0);
+      producido+=(c.maquinas||[]).reduce((s,m)=>s+(Number(m.producido)||0),0);
+      // Count operator alerts
+      (c.tokenReparto?.controlTokens||[]).forEach(op=>{
+        if(op.saldoEsperado!==null&&op.saldoEsperado<0) alertas++;
+      });
+    });
+    return {recaudo,gastos,consignar:recaudo-gastos,tokVend,tokDev,descuadres,alertas,producido,count:cf.length};
+  },[filtered]);
+
+  return (
+    <div>
+      <div className="topbar">
+        <div className="topbar-left">
+          <img className="topbar-logo" src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" alt="P"/>
+          <div>
+            <div className="topbar-title">CONTROL DE RECAUDO</div>
+            <div className="topbar-sub">Panel Administrativo · Panzer Carwash</div>
+          </div>
+        </div>
+        <div className="topbar-right">
+          <span className={`dot ${apiStatus==="live"?"on":"off"}`}/>
+          <span style={{fontSize:10,color:apiStatus==="live"?"var(--green)":"var(--td)",fontWeight:600}}>
+            {apiStatus==="live"?"API conectada":"Datos demo"}
+          </span>
+          <button className={`btn-r ${refreshing?"spin":""}`} onClick={()=>cargar(true)}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+            {refreshing?"...":"Actualizar"}
+          </button>
+        </div>
+      </div>
+
+      <div className="shell">
+        {/* Filtro rápido */}
+        <div className="filters">
+          <div className="fg" style={{flex:1}}>
+            <span className="fl">Filtrar por sede</span>
+            <select className="fs" value={filtroSede} onChange={e=>{setFiltroSede(e.target.value);setSelCiclo(null);}}>
+              <option value="todas">Todas las sedes</option>
+              {sedes.map(s=><option key={s} value={s}>{s}</option>)}
+            </select>
+          </div>
+          <div style={{display:"flex",alignItems:"flex-end",gap:6,flexWrap:"wrap"}}>
+            <div style={{fontSize:11,color:"var(--td)",fontWeight:600,padding:"8px 0"}}>
+              {gStats.count} ciclo(s) · {gStats.alertas>0&&<span style={{color:"var(--red)"}}>⚠ {gStats.alertas} alerta(s)</span>}
+              {gStats.alertas===0&&<span style={{color:"var(--green)"}}>✓ Sin alertas</span>}
+            </div>
+          </div>
+        </div>
+
+        {/* Stats globales */}
+        <div className="stats">
+          <div className="st g"><div className="st-l">A Consignar</div><div className="st-v" style={{color:"var(--green)"}}>{fmt(gStats.consignar)}</div><div className="st-s">{gStats.count} ciclo(s)</div></div>
+          <div className="st a"><div className="st-l">Recaudo Bruto</div><div className="st-v" style={{color:"var(--amber)"}}>{fmt(gStats.recaudo)}</div></div>
+          <div className="st b"><div className="st-l">Producido Máq.</div><div className="st-v" style={{color:"var(--blue)"}}>{fmt(gStats.producido)}</div></div>
+          <div className="st p"><div className="st-l">Tokens Vendidos</div><div className="st-v" style={{color:"var(--purple)"}}>{fN(gStats.tokVend)}</div><div className="st-s">Dev: {fN(gStats.tokDev)}</div></div>
+          <div className="st r"><div className="st-l">Descuadres</div><div className="st-v" style={{color:gStats.descuadres>0?"var(--red)":"var(--green)"}}>{gStats.descuadres>0?fmt(gStats.descuadres):"✓ $0"}</div></div>
+          <div className="st c"><div className="st-l">Gastos</div><div className="st-v" style={{color:"var(--cyan)"}}>{fmt(gStats.gastos)}</div></div>
+        </div>
+
+        {/* Ciclos cards */}
+        <div className="stitle">📋 Selecciona un ciclo para inspeccionar</div>
+        <div className="ciclo-cards">
+          {filtered.map(c=>{
+            const el=c.liquidaciones.reduce((s,l)=>s+(Number(l.efectivo)||0),0);
+            const em=Number(c.conteoFisico?.efectivoTotal)||0;
+            const gas=(c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0);
+            const cons=el+em-gas;
+            const hasAlert=(c.tokenReparto?.controlTokens||[]).some(op=>op.saldoEsperado!==null&&op.saldoEsperado<0);
+            const sumaTokenDia=(c.maquinas||[]).reduce((s,m)=>s+(Number(m.tokenDia)||0),0);
+            const tokFis=Number(c.conteoFisico?.tokensFisicos)||0;
+            const difTok=sumaTokenDia-tokFis;
+            const ajuste=c.tokenReparto?.ajusteTokens||0;
+            return(
+              <div key={c.id} className={`cc ${selCiclo?.id===c.id?"active":""}`} onClick={()=>{setSelCiclo(c);setDetTab("comparacion");}}>
+                <div className="cc-top">
+                  <div>
+                    <div className="cc-sede">{c.sede}</div>
+                    <div className="cc-meta">{c.tesorero} · {c.fecha} {c.hora} · {c.liquidaciones.length} liq.</div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div className="cc-val-l">A consignar</div>
+                    <div className="cc-val">{fmt(cons)}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {hasAlert&&<span className="badge r">⚠ Faltante tokens</span>}
+                  {!hasAlert&&<span className="badge g">✓ Tokens OK</span>}
+                  {difTok!==0&&<span className="badge a">Δ {difTok} tokens</span>}
+                  {difTok===0&&<span className="badge g">Conteo ✓</span>}
+                  {gas>0&&<span className="badge b">Gastos: {fmt(gas)}</span>}
+                  {ajuste<0&&<span className="badge r">📤 Retiro: {fN(Math.abs(ajuste))} tok</span>}
+                  {ajuste>0&&<span className="badge g">📥 Ingreso: +{fN(ajuste)} tok</span>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Detalle del ciclo seleccionado */}
+        {selCiclo && <CicloDetail c={selCiclo} tab={detTab} setTab={setDetTab}/>}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// CICLO DETAIL
+// ============================================================
+function CicloDetail({c,tab,setTab}){
+  // Cálculos
+  const sumaTokenDia=(c.maquinas||[]).reduce((s,m)=>s+(Number(m.tokenDia)||0),0);
+  const sumaMoneDia=(c.maquinas||[]).reduce((s,m)=>s+(Number(m.moneDia)||0),0);
+  const tokFis=Number(c.conteoFisico?.tokensFisicos)||0;
+  const efFis=Number(c.conteoFisico?.efectivoTotal)||0;
+  const difTok=sumaTokenDia-tokFis;
+  const difMon=sumaMoneDia-efFis;
+  const totalProducido=(c.maquinas||[]).reduce((s,m)=>s+(Number(m.producido)||0),0);
+  const maxProd=Math.max(...(c.maquinas||[]).map(m=>Number(m.producido)||0),1);
+  const maxTokenDia=Math.max(...(c.maquinas||[]).map(m=>Number(m.tokenDia)||0),1);
+  const tr=c.tokenReparto||{};
+  const controlTokens=tr.controlTokens||[];
+  const operadoresReparto=tr.operadores||[];
+  const maxReparto=Math.max(...operadoresReparto.map(r=>Number(r.tokens)||0),1);
+
+  // Agrupar liquidaciones por operador
+  const opMap={};
+  c.liquidaciones.forEach(l=>{
+    if(!opMap[l.operador]) opMap[l.operador]={vendidos:0,devTokens:0,efectivo:0,descuadre:0,count:0,qr:0};
+    opMap[l.operador].vendidos+=(Number(l.tokensVendidos)||0);
+    opMap[l.operador].devTokens+=(Number(l.devTokens)||0);
+    opMap[l.operador].efectivo+=(Number(l.efectivo)||0);
+    opMap[l.operador].descuadre+=(Number(l.descuadre)||0);
+    opMap[l.operador].qr+=(Number(l.qr)||0);
+    opMap[l.operador].count++;
+  });
+
+  // ALERTA CLAVE: Tokens egresados por operadores vs tokens ingresados a máquinas
+  const totalVendidosLiq=c.liquidaciones.reduce((s,l)=>s+(Number(l.tokensVendidos)||0),0);
+  const totalDevTokensLiq=c.liquidaciones.reduce((s,l)=>s+(Number(l.devTokens)||0),0);
+  const tokensEgresados=totalVendidosLiq+totalDevTokensLiq; // lo que salió de manos de operadores
+  const tokensEnMaquinas=sumaTokenDia; // lo que entró a las máquinas (TOKEN_DIA)
+  const difEgresoVsMaq=tokensEnMaquinas-tokensEgresados; // positivo = entraron más de lo que vendieron
+  const difEgresoAbs=Math.abs(difEgresoVsMaq);
+  const umbralAlerta=30; // más de 30 es sospechoso
+  const nivelAlerta=difEgresoAbs<=10?"ok":difEgresoAbs<=umbralAlerta?"warning":"danger";
+
+  // Descuadres de efectivo
+  const totalDescuadreEfectivo=c.liquidaciones.reduce((s,l)=>s+(Number(l.descuadre)||0),0);
+  const descuadreAbs=Math.abs(totalDescuadreEfectivo);
+
+  // Gastos
+  const totalGastos=(c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0);
+  const ajusteTokens=tr.ajusteTokens||0;
+
+  return(
+    <div style={{marginTop:8}}>
+      <div className="stitle">
+        🔍 {c.sede} — {c.fecha}
+        <span style={{fontSize:12,color:"var(--td)",fontWeight:500,marginLeft:8}}>{c.tesorero}</span>
+      </div>
+
+      <div className="tabs">
+        {[["comparacion","⚖️ Comparación"],["tokens","🔒 Control Tokens"],["reparto","🪙 Repartición"],["detalle","📋 Detalle"],["alertas","🚨 Alertas"]].map(([k,l])=>(
+          <button key={k} className={`tab ${tab===k?"on":""}`} onClick={()=>setTab(k)}>{l}</button>
+        ))}
+      </div>
+
+      {/* ===== TAB: COMPARACIÓN ===== */}
+      {tab==="comparacion"&&(
+        <div>
+          {/* Alertas */}
+          {difTok!==0&&<div className="alert-banner r">⚠️ Diferencia de <strong style={{margin:"0 4px"}}>{Math.abs(difTok)} tokens</strong> entre contadores ({fN(sumaTokenDia)}) y conteo físico ({fN(tokFis)}) — {difTok>0?"faltan físicos":"sobran físicos"}</div>}
+          {difMon!==0&&<div className="alert-banner a">⚠️ Diferencia de <strong style={{margin:"0 4px"}}>{fmt(Math.abs(difMon))}</strong> en efectivo — Contadores: {fmt(sumaMoneDia)} vs Físico: {fmt(efFis)}</div>}
+          {difTok===0&&difMon===0&&<div className="alert-banner g">✓ Conteo físico cuadra perfectamente con los contadores de las máquinas</div>}
+
+          {/* Alerta de ajuste de tokens */}
+          {(tr.ajusteTokens||0)!==0&&(
+            <div style={{
+              padding:"14px 18px",borderRadius:12,marginBottom:10,
+              background:tr.ajusteTokens<0?"rgba(239,68,68,0.06)":"rgba(16,185,129,0.06)",
+              border:`2px solid ${tr.ajusteTokens<0?"rgba(239,68,68,.3)":"rgba(16,185,129,.3)"}`,
+              display:"flex",alignItems:"center",gap:14,
+            }}>
+              <div style={{
+                width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,
+                background:tr.ajusteTokens<0?"var(--red-d)":"var(--green-d)",
+                border:`1px solid ${tr.ajusteTokens<0?"rgba(239,68,68,.3)":"rgba(16,185,129,.3)"}`,
+                flexShrink:0,
+              }}>
+                {tr.ajusteTokens<0?"📤":"📥"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:800,color:tr.ajusteTokens<0?"var(--red)":"var(--green)"}}>
+                  {tr.ajusteTokens<0?"RETIRO":"INGRESO"} DE TOKENS: {tr.ajusteTokens>0?"+":""}{fN(tr.ajusteTokens)} tokens
+                </div>
+                {tr.ajusteMotivo&&<div style={{fontSize:12,color:"var(--td)",marginTop:3}}>Motivo: <strong style={{color:"var(--tb)"}}>{tr.ajusteMotivo}</strong></div>}
+                <div style={{fontSize:11,color:"var(--td)",marginTop:2}}>
+                  Base sin ajuste: {fN((tr.tokensMaq||0)+((tr.totalSaldoAnterior||0)-(tr.totalVendidosCiclo||0)-(tr.totalDevTokensCiclo||0)))} → Base con ajuste: <strong style={{color:"var(--amber)"}}>{fN(tr.tokensTotalBase)}</strong>
+                </div>
+              </div>
+              <div style={{
+                textAlign:"center",padding:"8px 14px",borderRadius:10,
+                background:tr.ajusteTokens<0?"var(--red-d)":"var(--green-d)",
+                flexShrink:0,
+              }}>
+                <div style={{fontSize:22,fontWeight:800,color:tr.ajusteTokens<0?"var(--red)":"var(--green)",fontFamily:"var(--mono)"}}>
+                  {tr.ajusteTokens>0?"+":""}{fN(tr.ajusteTokens)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="panels">
+            {/* Tokens: Contadores vs Físico */}
+            <div className="card">
+              <div className="card-t">🪙 Tokens — Contadores vs Físico</div>
+              <div style={{display:"flex",gap:10,marginBottom:14}}>
+                <div style={{flex:1,textAlign:"center",padding:14,background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                  <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>Σ TOKEN_DIA</div>
+                  <div style={{fontSize:28,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)",marginTop:4}}>{fN(sumaTokenDia)}</div>
+                  <div style={{fontSize:10,color:"var(--td)"}}>Contadores</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",fontSize:20,color:"var(--td)"}}>vs</div>
+                <div style={{flex:1,textAlign:"center",padding:14,background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                  <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>Físico Contado</div>
+                  <div style={{fontSize:28,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)",marginTop:4}}>{fN(tokFis)}</div>
+                  <div style={{fontSize:10,color:"var(--td)"}}>Tokens reales</div>
+                </div>
+              </div>
+              <div style={{textAlign:"center",padding:12,borderRadius:10,background:difTok===0?"var(--green-d)":"var(--red-d)",border:`1px solid ${difTok===0?"rgba(16,185,129,.2)":"rgba(239,68,68,.2)"}`}}>
+                <span style={{fontSize:11,fontWeight:700,color:difTok===0?"var(--green)":"var(--red)"}}>
+                  {difTok===0?"✓ CUADRA":"DIFERENCIA: "+Math.abs(difTok)+" tokens "+(difTok>0?"(faltan)":"(sobran)")}
+                </span>
+              </div>
+            </div>
+
+            {/* Efectivo: Contadores vs Físico */}
+            <div className="card">
+              <div className="card-t">💵 Efectivo — Contadores vs Físico</div>
+              <div style={{display:"flex",gap:10,marginBottom:14}}>
+                <div style={{flex:1,textAlign:"center",padding:14,background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                  <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>Σ MONE_DIA</div>
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)",marginTop:4}}>{fmt(sumaMoneDia)}</div>
+                  <div style={{fontSize:10,color:"var(--td)"}}>Contadores</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",fontSize:20,color:"var(--td)"}}>vs</div>
+                <div style={{flex:1,textAlign:"center",padding:14,background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                  <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>Físico Contado</div>
+                  <div style={{fontSize:22,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)",marginTop:4}}>{fmt(efFis)}</div>
+                  <div style={{fontSize:10,color:"var(--td)"}}>Efectivo real</div>
+                </div>
+              </div>
+              <div style={{textAlign:"center",padding:12,borderRadius:10,background:difMon===0?"var(--green-d)":"var(--red-d)",border:`1px solid ${difMon===0?"rgba(16,185,129,.2)":"rgba(239,68,68,.2)"}`}}>
+                <span style={{fontSize:11,fontWeight:700,color:difMon===0?"var(--green)":"var(--red)"}}>
+                  {difMon===0?"✓ CUADRA":"DIFERENCIA: "+fmt(Math.abs(difMon))+" "+(difMon>0?"(falta)":"(sobra)")}
+                </span>
+              </div>
+            </div>
+
+            {/* Producido por máquina - detallado */}
+            <div className="card panel-full">
+              <div className="card-t">⚙️ Producido por Máquina — Detalle de Contadores</div>
+              <div style={{fontSize:12,color:"var(--td)",marginBottom:16,lineHeight:1.6}}>
+                Cada máquina muestra el <strong style={{color:"var(--amber)"}}>GEN anterior</strong> vs <strong style={{color:"var(--tb)"}}>GEN actual</strong> y la resta da el <strong style={{color:"var(--green)"}}>Producido</strong> del ciclo.
+              </div>
+
+              {(c.maquinas||[]).sort((a,b)=>(Number(b.producido)||0)-(Number(a.producido)||0)).map((m,i)=>{
+                const genAnt=Number(m.genAnterior)||0;
+                const genAct=Number(m.genActual)||0;
+                const prod=Number(m.producido)||0;
+                const tokD=Number(m.tokenDia)||0;
+                const monD=Number(m.moneDia)||0;
+                const pctBar=(prod/maxProd)*100;
+                return(
+                  <div key={i} style={{background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:12,padding:"14px 16px",marginBottom:10}}>
+                    {/* Nombre + producido */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                      <div style={{fontSize:15,fontWeight:800,color:"var(--tb)"}}>{m.nombre}</div>
+                      <div style={{textAlign:"right"}}>
+                        <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>Producido</div>
+                        <div style={{fontSize:20,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)"}}>{fmt(prod)}</div>
+                      </div>
+                    </div>
+
+                    {/* GEN anterior → GEN actual = Producido */}
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+                      <div style={{flex:1,minWidth:110,textAlign:"center",padding:"10px 8px",background:"var(--sf)",borderRadius:8,border:"1px solid var(--bd)"}}>
+                        <div style={{fontSize:8,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>GEN Anterior</div>
+                        <div style={{fontSize:14,fontWeight:700,color:"var(--amber)",fontFamily:"var(--mono)",marginTop:3}}>{fmt(genAnt)}</div>
+                      </div>
+                      <div style={{fontSize:18,color:"var(--td)",fontWeight:700}}>→</div>
+                      <div style={{flex:1,minWidth:110,textAlign:"center",padding:"10px 8px",background:"var(--sf)",borderRadius:8,border:"1px solid var(--bd)"}}>
+                        <div style={{fontSize:8,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>GEN Actual</div>
+                        <div style={{fontSize:14,fontWeight:700,color:"var(--tb)",fontFamily:"var(--mono)",marginTop:3}}>{fmt(genAct)}</div>
+                      </div>
+                      <div style={{fontSize:18,color:"var(--td)",fontWeight:700}}>=</div>
+                      <div style={{flex:1,minWidth:110,textAlign:"center",padding:"10px 8px",background:"var(--green-d)",borderRadius:8,border:"1px solid rgba(16,185,129,.2)"}}>
+                        <div style={{fontSize:8,color:"var(--green)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>Producido</div>
+                        <div style={{fontSize:14,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)",marginTop:3}}>{fmt(prod)}</div>
+                      </div>
+                    </div>
+
+                    {/* Barra visual de producido */}
+                    <div style={{marginBottom:10}}>
+                      <div style={{height:6,background:"var(--sf3)",borderRadius:3,overflow:"hidden"}}>
+                        <div style={{height:"100%",borderRadius:3,width:`${pctBar}%`,background:"linear-gradient(90deg,var(--green),rgba(16,185,129,.3))",transition:"width .8s ease-out"}}/>
+                      </div>
+                    </div>
+
+                    {/* TOKEN_DIA y MONE_DIA */}
+                    <div style={{display:"flex",gap:8}}>
+                      <div style={{flex:1,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"var(--sf)",borderRadius:8,border:"1px solid var(--bd)"}}>
+                        <span style={{fontSize:11,color:"var(--td)",fontWeight:600}}>TOKEN_DIA</span>
+                        <span style={{fontSize:14,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)"}}>{fN(tokD)}</span>
+                      </div>
+                      <div style={{flex:1,display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"var(--sf)",borderRadius:8,border:"1px solid var(--bd)"}}>
+                        <span style={{fontSize:11,color:"var(--td)",fontWeight:600}}>MONE_DIA</span>
+                        <span style={{fontSize:14,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)"}}>{fmt(monD)}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Totales de todas las máquinas */}
+              <div style={{background:"var(--amber-d)",border:"1px solid rgba(245,158,11,.2)",borderRadius:12,padding:16,marginTop:6}}>
+                <div style={{fontSize:13,fontWeight:800,color:"var(--amber)",marginBottom:10}}>📊 Totales — Todas las Máquinas</div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:120,textAlign:"center",padding:12,background:"var(--sf)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                    <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase"}}>Σ Producido</div>
+                    <div style={{fontSize:20,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)",marginTop:4}}>{fmt(totalProducido)}</div>
+                  </div>
+                  <div style={{flex:1,minWidth:120,textAlign:"center",padding:12,background:"var(--sf)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                    <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase"}}>Σ TOKEN_DIA</div>
+                    <div style={{fontSize:20,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)",marginTop:4}}>{fN(sumaTokenDia)}</div>
+                  </div>
+                  <div style={{flex:1,minWidth:120,textAlign:"center",padding:12,background:"var(--sf)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                    <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase"}}>Σ MONE_DIA</div>
+                    <div style={{fontSize:20,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)",marginTop:4}}>{fmt(sumaMoneDia)}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== TAB: CONTROL TOKENS ===== */}
+      {tab==="tokens"&&(
+        <div>
+          {/* Alertas de operadores */}
+          {controlTokens.some(op=>op.saldoEsperado<0)&&(
+            <div className="alert-banner r">⚠️ Hay operadores con <strong style={{margin:"0 4px"}}>tokens faltantes</strong> — vendieron más de lo que tenían asignado</div>
+          )}
+          {controlTokens.every(op=>op.saldoEsperado>=0)&&(
+            <div className="alert-banner g">✓ Todos los operadores cuadran con sus saldos de tokens</div>
+          )}
+
+          {/* Alerta ajuste tokens */}
+          {(tr.ajusteTokens||0)!==0&&(
+            <div style={{
+              padding:"14px 18px",borderRadius:12,marginBottom:10,
+              background:tr.ajusteTokens<0?"rgba(239,68,68,0.06)":"rgba(16,185,129,0.06)",
+              border:`2px solid ${tr.ajusteTokens<0?"rgba(239,68,68,.3)":"rgba(16,185,129,.3)"}`,
+              display:"flex",alignItems:"center",gap:14,
+            }}>
+              <div style={{
+                width:44,height:44,borderRadius:12,display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,
+                background:tr.ajusteTokens<0?"var(--red-d)":"var(--green-d)",
+                border:`1px solid ${tr.ajusteTokens<0?"rgba(239,68,68,.3)":"rgba(16,185,129,.3)"}`,
+                flexShrink:0,
+              }}>
+                {tr.ajusteTokens<0?"📤":"📥"}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:800,color:tr.ajusteTokens<0?"var(--red)":"var(--green)"}}>
+                  {tr.ajusteTokens<0?"RETIRO":"INGRESO"} DE TOKENS: {tr.ajusteTokens>0?"+":""}{fN(tr.ajusteTokens)} tokens
+                </div>
+                {tr.ajusteMotivo&&<div style={{fontSize:12,color:"var(--td)",marginTop:3}}>Motivo: <strong style={{color:"var(--tb)"}}>{tr.ajusteMotivo}</strong></div>}
+              </div>
+              <div style={{
+                textAlign:"center",padding:"8px 14px",borderRadius:10,
+                background:tr.ajusteTokens<0?"var(--red-d)":"var(--green-d)",
+                flexShrink:0,
+              }}>
+                <div style={{fontSize:22,fontWeight:800,color:tr.ajusteTokens<0?"var(--red)":"var(--green)",fontFamily:"var(--mono)"}}>
+                  {tr.ajusteTokens>0?"+":""}{fN(tr.ajusteTokens)}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Operador cards */}
+          {controlTokens.map((op,i)=>{
+            const isAlert=op.saldoEsperado!==null&&op.saldoEsperado<0;
+            const saldo=op.historial?.saldo||0;
+            return(
+              <div key={i} className={`op-card ${isAlert?"alert":""}`}>
+                <div className="op-top">
+                  <div className="op-name">{op.nombre}</div>
+                  {isAlert?<span className="badge r">⚠ FALTANTE</span>:<span className="badge g">✓ OK</span>}
+                </div>
+                <div className="op-flow">
+                  <div className="op-pill">
+                    <div className="op-pill-l">Saldo ant.</div>
+                    <div className="op-pill-v" style={{color:"var(--amber)"}}>{fN(saldo)}</div>
+                  </div>
+                  <div className="op-arrow">→</div>
+                  <div className="op-pill">
+                    <div className="op-pill-l">Vendidos</div>
+                    <div className="op-pill-v" style={{color:"var(--blue)"}}>−{fN(op.vendidosEsteC)}</div>
+                  </div>
+                  <div className="op-arrow">→</div>
+                  <div className="op-pill">
+                    <div className="op-pill-l">Dev. Tok</div>
+                    <div className="op-pill-v" style={{color:"var(--purple)"}}>−{fN(op.devTokensEsteC)}</div>
+                  </div>
+                  <div className="op-arrow">=</div>
+                  <div className="op-pill" style={{background:isAlert?"var(--red-d)":"var(--green-d)",borderColor:isAlert?"rgba(239,68,68,.3)":"rgba(16,185,129,.3)"}}>
+                    <div className="op-pill-l">Debe tener</div>
+                    <div className="op-pill-v" style={{color:isAlert?"var(--red)":"var(--green)",fontSize:20}}>{fN(op.saldoEsperado)}</div>
+                  </div>
+                </div>
+                {isAlert&&(
+                  <div style={{marginTop:10,padding:"8px 12px",background:"var(--red-d)",borderRadius:8,fontSize:11,color:"var(--red)",fontWeight:600}}>
+                    ⚠ Vendió {Math.abs(op.saldoEsperado)} tokens más de los asignados. Valor estimado de pérdida: <strong>{fmt(Math.abs(op.saldoEsperado)*5000)}</strong>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Balance global */}
+          <div className="card" style={{marginTop:14}}>
+            <div className="card-t">📊 Balance Global de Tokens</div>
+            <div className="dr"><span className="l">Tokens en máquinas (conteo físico)</span><span className="v">{fN(tr.tokensMaq)}</span></div>
+            <div className="dr"><span className="l">Σ Saldos anteriores (operadores)</span><span className="v">{fN(tr.totalSaldoAnterior)}</span></div>
+            <div className="dr"><span className="l">Σ Vendidos este ciclo</span><span className="v" style={{color:"var(--blue)"}}>−{fN(tr.totalVendidosCiclo)}</span></div>
+            <div className="dr"><span className="l">Σ Dev. tokens ciclo</span><span className="v" style={{color:"var(--purple)"}}>−{fN(tr.totalDevTokensCiclo)}</span></div>
+            <div className="sep"/>
+            <div className="dr">
+              <span className="l" style={{fontWeight:700,color:(tr.tokensPerdidos||0)===0?"var(--green)":"var(--red)"}}>
+                {(tr.tokensPerdidos||0)===0?"✓ Sin faltantes":"⚠ Tokens no justificados"}
+              </span>
+              <span className="v" style={{fontSize:20,color:(tr.tokensPerdidos||0)===0?"var(--green)":"var(--red)"}}>{fN(tr.tokensPerdidos||0)}</span>
+            </div>
+          </div>
+
+          {/* Resumen por operador: ventas y efectivo */}
+          <div className="card" style={{marginTop:14}}>
+            <div className="card-t">👥 Resumen por Operador</div>
+            {Object.entries(opMap).map(([name,data],i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:6}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>{name}</div>
+                  <div style={{fontSize:11,color:"var(--td)"}}>{data.count} liq. · Tok: {fN(data.vendidos)} · Dev: {fN(data.devTokens)} · QR: {fmt(data.qr)}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:16,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)"}}>{fmt(data.efectivo)}</div>
+                  {data.descuadre!==0&&<div style={{fontSize:10,color:"var(--red)",fontWeight:700}}>Δ {fmt(data.descuadre)}</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ===== TAB: REPARTICIÓN ===== */}
+      {tab==="reparto"&&(
+        <div>
+          {/* Base total */}
+          <div className="hl a">
+            <div className="sm" style={{color:"var(--amber)"}}>Base Total de Tokens — Nuevo Ciclo</div>
+            <div className="big" style={{color:"var(--amber)"}}>{fN(tr.tokensTotalBase)}</div>
+          </div>
+
+          {/* Composición de la base */}
+          <div className="card">
+            <div className="card-t">📦 Composición de la Base</div>
+            <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:120,textAlign:"center",padding:12,background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase"}}>De máquinas</div>
+                <div style={{fontSize:22,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)",marginTop:4}}>{fN(tr.tokensMaq)}</div>
+              </div>
+              <div style={{flex:1,minWidth:120,textAlign:"center",padding:12,background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)"}}>
+                <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase"}}>Saldos operadores</div>
+                <div style={{fontSize:22,fontWeight:800,color:"var(--purple)",fontFamily:"var(--mono)",marginTop:4}}>{fN((tr.totalSaldoAnterior||0)-(tr.totalVendidosCiclo||0)-(tr.totalDevTokensCiclo||0))}</div>
+              </div>
+              {(tr.ajusteTokens||0)!==0&&(
+                <div style={{flex:1,minWidth:120,textAlign:"center",padding:12,background:tr.ajusteTokens<0?"var(--red-d)":"var(--green-d)",borderRadius:10,border:`1px solid ${tr.ajusteTokens<0?"rgba(239,68,68,.2)":"rgba(16,185,129,.2)"}`}}>
+                  <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase"}}>{tr.ajusteTokens<0?"Retiro":"Ingreso"}</div>
+                  <div style={{fontSize:22,fontWeight:800,color:tr.ajusteTokens<0?"var(--red)":"var(--green)",fontFamily:"var(--mono)",marginTop:4}}>{tr.ajusteTokens>0?"+":""}{fN(tr.ajusteTokens)}</div>
+                  {tr.ajusteMotivo&&<div style={{fontSize:10,color:"var(--td)",marginTop:2}}>{tr.ajusteMotivo}</div>}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Modo de repartición */}
+          <div className="card">
+            <div className="card-t">
+              {tr.modoReparto==="sede"?"🏢 Base Completa en Sede":"👥 Repartido entre Operadores"}
+            </div>
+
+            {tr.modoReparto==="operadores"&&operadoresReparto.length>0&&(
+              <>
+                {operadoresReparto.map((r,i)=>{
+                  const pct=((Number(r.tokens)||0)/tr.tokensTotalBase)*100;
+                  const colors=["var(--amber)","var(--blue)","var(--green)","var(--purple)","var(--cyan)"];
+                  const clr=colors[i%colors.length];
+                  return(
+                    <div key={i} className="rep-bar">
+                      <div className="rep-name">{r.nombre}</div>
+                      <div className="rep-track">
+                        <div className="rep-fill" style={{width:`${pct}%`,background:`linear-gradient(90deg,${clr},${clr}44)`}}/>
+                      </div>
+                      <div className="rep-val">{fN(r.tokens)}</div>
+                      <div style={{fontSize:10,color:"var(--td)",minWidth:35,textAlign:"right"}}>{pct.toFixed(0)}%</div>
+                    </div>
+                  );
+                })}
+                <div className="sep"/>
+                <div className="dr">
+                  <span className="l" style={{fontWeight:700}}>Total repartido</span>
+                  <span className="v" style={{color:"var(--amber)"}}>{fN(operadoresReparto.reduce((s,r)=>s+(Number(r.tokens)||0),0))}</span>
+                </div>
+                {tr.tokensTotalBase-operadoresReparto.reduce((s,r)=>s+(Number(r.tokens)||0),0)!==0&&(
+                  <div className="dr">
+                    <span className="l">Sin repartir</span>
+                    <span className="v" style={{color:"var(--red)"}}>{fN(tr.tokensTotalBase-operadoresReparto.reduce((s,r)=>s+(Number(r.tokens)||0),0))}</span>
+                  </div>
+                )}
+              </>
+            )}
+
+            {tr.modoReparto==="sede"&&(
+              <div className="alert-banner g" style={{margin:0}}>
+                ✓ Los {fN(tr.tokensTotalBase)} tokens quedan como base compartida en la sede
+              </div>
+            )}
+          </div>
+
+          {/* Base de efectivo */}
+          <div className="card">
+            <div className="card-t">💵 Base de Efectivo</div>
+            <div className="dr"><span className="l">Base configurada</span><span className="v" style={{color:"var(--amber)"}}>{fmt(tr.baseConfigurada)}</span></div>
+            <div className="dr"><span className="l">Gastos registrados</span><span className="v" style={{color:"var(--red)"}}>−{fmt(tr.totalGastosDeSede)}</span></div>
+            <div className="dr"><span className="l">Base recogida</span><span className="v">{fmt(tr.baseRecogida)}</span></div>
+            <div className="sep"/>
+            <div className="dr"><span className="l" style={{fontWeight:700,color:"var(--green)"}}>Base nueva dejada</span><span className="v" style={{color:"var(--green)",fontSize:18}}>{fmt(tr.baseNueva)}</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== TAB: DETALLE ===== */}
+      {tab==="detalle"&&(
+        <div>
+          {/* Financiero */}
+          <div className="card">
+            <div className="card-t">💰 Resumen Financiero</div>
+            {(()=>{
+              const el=c.liquidaciones.reduce((s,l)=>s+(Number(l.efectivo)||0),0);
+              const em=Number(c.conteoFisico?.efectivoTotal)||0;
+              const qr=c.liquidaciones.reduce((s,l)=>s+(Number(l.qr)||0),0);
+              const dev=c.liquidaciones.reduce((s,l)=>s+(Number(l.devoluciones)||0),0);
+              const gas=(c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0);
+              const rec=el+em;
+              return(<>
+                <div className="dr"><span className="l">Total liquidaciones ({c.liquidaciones.length})</span><span className="v">{fmt(el)}</span></div>
+                <div className="dr"><span className="l">Pagos QR descontados</span><span className="v" style={{color:"var(--blue)"}}>{fmt(qr)}</span></div>
+                <div className="dr"><span className="l">Devoluciones efectivo</span><span className="v" style={{color:"var(--red)"}}>{fmt(dev)}</span></div>
+                <div className="dr"><span className="l">Recaudo monedas (conteo físico)</span><span className="v">{fmt(em)}</span></div>
+                <div className="dr"><span className="l">Producido máquinas (contadores)</span><span className="v">{fmt(totalProducido)}</span></div>
+                {gas>0&&<div className="dr"><span className="l" style={{color:"var(--red)"}}>Gastos caja menor</span><span className="v" style={{color:"var(--red)"}}>−{fmt(gas)}</span></div>}
+                <div className="sep"/>
+                <div className="dr"><span className="l" style={{fontWeight:700}}>Total recaudo</span><span className="v" style={{color:"var(--amber)",fontSize:18}}>{fmt(rec)}</span></div>
+                <div className="dr"><span className="l" style={{fontWeight:700,color:"var(--green)"}}>A consignar</span><span className="v" style={{color:"var(--green)",fontSize:20}}>{fmt(rec-gas)}</span></div>
+              </>);
+            })()}
+          </div>
+
+          {/* Liquidaciones detalladas */}
+          <div className="card">
+            <div className="card-t">🧾 Liquidaciones ({c.liquidaciones.length})</div>
+            {c.liquidaciones.map((l,i)=>(
+              <div key={i} style={{background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div>
+                    <span style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>#{i+1} {l.operador}</span>
+                    {l.numRecibo&&<span style={{fontSize:11,color:"var(--td)",marginLeft:6}}>Rec: {l.numRecibo}</span>}
+                  </div>
+                  <div style={{fontSize:16,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)"}}>{fmt(l.efectivo)}</div>
+                </div>
+                <div style={{fontSize:11,color:"var(--td)"}}>
+                  Tok: {fN(l.tokensVendidos)} · Dev: {fN(l.devTokens)} · QR: {fmt(l.qr)} · Valor: {fmt(l.valor)}
+                  {l.descuadre!==0&&<span style={{color:"var(--red)",fontWeight:700}}> · Δ{fmt(l.descuadre)}</span>}
+                </div>
+                {l.observaciones&&<div style={{marginTop:6,fontSize:11,color:"var(--amber)"}}>📝 {l.observaciones}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* Gastos */}
+          {c.gastos&&c.gastos.length>0&&(
+            <div className="card">
+              <div className="card-t">💸 Gastos Caja Menor</div>
+              {c.gastos.map((g,i)=>(<div key={i} className="dr"><span className="l">{g.concepto}</span><span className="v" style={{color:"var(--red)"}}>{fmt(g.monto)}</span></div>))}
+              <div className="sep"/>
+              <div className="dr"><span className="l" style={{fontWeight:700}}>Total gastos</span><span className="v" style={{color:"var(--red)"}}>{fmt((c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0))}</span></div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ===== TAB: ALERTAS ===== */}
+      {tab==="alertas"&&(
+        <div>
+          {/* ========== ALERTA PRINCIPAL: Tokens egresados vs máquinas ========== */}
+          <div style={{
+            background:nivelAlerta==="ok"?"rgba(16,185,129,0.04)":nivelAlerta==="warning"?"rgba(245,158,11,0.04)":"rgba(239,68,68,0.06)",
+            border:`2px solid ${nivelAlerta==="ok"?"rgba(16,185,129,.25)":nivelAlerta==="warning"?"rgba(245,158,11,.25)":"rgba(239,68,68,.35)"}`,
+            borderRadius:16,padding:24,marginBottom:16,
+          }}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <div style={{fontSize:28}}>{nivelAlerta==="ok"?"✅":nivelAlerta==="warning"?"⚠️":"🚨"}</div>
+              <div>
+                <div style={{fontSize:17,fontWeight:800,color:nivelAlerta==="ok"?"var(--green)":nivelAlerta==="warning"?"var(--amber)":"var(--red)"}}>
+                  {nivelAlerta==="ok"?"Tokens Egresados vs Máquinas — OK":nivelAlerta==="warning"?"Tokens Egresados vs Máquinas — Revisar":"ALERTA: Descuadre Alto de Tokens"}
+                </div>
+                <div style={{fontSize:12,color:"var(--td)",marginTop:2}}>
+                  Los tokens que salen de los operadores (vendidos + devueltos) deben ser similares a los que entran a las máquinas (Σ TOKEN_DIA)
+                </div>
+              </div>
+            </div>
+
+            {/* Visual principal */}
+            <div style={{display:"flex",gap:12,marginBottom:18,flexWrap:"wrap"}}>
+              <div style={{flex:1,minWidth:140,textAlign:"center",padding:18,background:"var(--sf)",borderRadius:14,border:"1px solid var(--bd)"}}>
+                <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Tokens Egresados</div>
+                <div style={{fontSize:36,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)"}}>{fN(tokensEgresados)}</div>
+                <div style={{fontSize:11,color:"var(--td)",marginTop:6}}>
+                  <span style={{color:"var(--tb)",fontWeight:600}}>{fN(totalVendidosLiq)}</span> vendidos + <span style={{color:"var(--purple)",fontWeight:600}}>{fN(totalDevTokensLiq)}</span> devueltos
+                </div>
+                <div style={{fontSize:10,color:"var(--td)",marginTop:2}}>Lo que salió de manos de operadores</div>
+              </div>
+
+              <div style={{display:"flex",alignItems:"center",fontSize:28,color:"var(--td)",fontWeight:300}}>vs</div>
+
+              <div style={{flex:1,minWidth:140,textAlign:"center",padding:18,background:"var(--sf)",borderRadius:14,border:"1px solid var(--bd)"}}>
+                <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Tokens en Máquinas</div>
+                <div style={{fontSize:36,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)"}}>{fN(tokensEnMaquinas)}</div>
+                <div style={{fontSize:11,color:"var(--td)",marginTop:6}}>
+                  Σ TOKEN_DIA de todas las máquinas
+                </div>
+                <div style={{fontSize:10,color:"var(--td)",marginTop:2}}>Lo que entró a las máquinas</div>
+              </div>
+            </div>
+
+            {/* Resultado de la diferencia */}
+            <div style={{
+              textAlign:"center",padding:18,borderRadius:14,
+              background:nivelAlerta==="ok"?"var(--green-d)":nivelAlerta==="warning"?"var(--amber-d)":"var(--red-d)",
+              border:`1px solid ${nivelAlerta==="ok"?"rgba(16,185,129,.25)":nivelAlerta==="warning"?"rgba(245,158,11,.25)":"rgba(239,68,68,.3)"}`,
+            }}>
+              <div style={{fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:1,color:nivelAlerta==="ok"?"var(--green)":nivelAlerta==="warning"?"var(--amber)":"var(--red)",marginBottom:4}}>
+                Diferencia
+              </div>
+              <div style={{fontSize:40,fontWeight:800,fontFamily:"var(--mono)",color:nivelAlerta==="ok"?"var(--green)":nivelAlerta==="warning"?"var(--amber)":"var(--red)"}}>
+                {difEgresoVsMaq>0?"+":""}{fN(difEgresoVsMaq)}
+              </div>
+              <div style={{fontSize:12,color:"var(--td)",marginTop:6,lineHeight:1.6,maxWidth:500,margin:"6px auto 0"}}>
+                {nivelAlerta==="ok"&&"Diferencia normal (≤10). Los tokens vendidos coinciden con los ingresados a las máquinas."}
+                {nivelAlerta==="warning"&&`Diferencia de ${difEgresoAbs} tokens. Puede ser por tokens comprados y no usados aún, pero vale la pena monitorear.`}
+                {nivelAlerta==="danger"&&`¡Diferencia de ${difEgresoAbs} tokens es alta! Puede indicar tokens no registrados, ventas sin liquidar, o tokens entrando a máquinas sin pasar por operadores.`}
+              </div>
+            </div>
+
+            {/* Explicación */}
+            <div style={{marginTop:14,padding:"12px 16px",background:"var(--sf)",borderRadius:10,border:"1px solid var(--bd)",fontSize:11,color:"var(--td)",lineHeight:1.7}}>
+              <strong style={{color:"var(--tb)"}}>¿Cómo leer esto?</strong><br/>
+              • Si <strong style={{color:"var(--amber)"}}>Máquinas &gt; Egresados</strong>: entraron tokens que no salieron de operadores (posiblemente clientes que compraron antes y usaron ahora)<br/>
+              • Si <strong style={{color:"var(--blue)"}}>Egresados &gt; Máquinas</strong>: salieron tokens que no llegaron a máquinas (¿tokens perdidos o no usados aún?)<br/>
+              • Diferencia de <strong style={{color:"var(--green)"}}>0-10</strong>: normal · <strong style={{color:"var(--amber)"}}>10-30</strong>: revisar · <strong style={{color:"var(--red)"}}>30+</strong>: alerta
+            </div>
+          </div>
+
+          {/* Detalle por operador: egresados */}
+          <div className="card">
+            <div className="card-t">👥 Desglose por Operador — Tokens Egresados</div>
+            {Object.entries(opMap).map(([name,data],i)=>{
+              const egresadosOp=data.vendidos+data.devTokens;
+              const pctTotal=tokensEgresados>0?((egresadosOp/tokensEgresados)*100):0;
+              return(
+                <div key={i} style={{background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>{name}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)"}}>{fN(egresadosOp)}</div>
+                  </div>
+                  <div style={{display:"flex",gap:8,marginBottom:8}}>
+                    <div style={{flex:1,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid var(--bd)"}}>
+                      <span style={{fontSize:10,color:"var(--td)"}}>Vendidos</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"var(--tb)",fontFamily:"var(--mono)"}}>{fN(data.vendidos)}</span>
+                    </div>
+                    <div style={{flex:1,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid var(--bd)"}}>
+                      <span style={{fontSize:10,color:"var(--td)"}}>Dev. Tok</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"var(--purple)",fontFamily:"var(--mono)"}}>{fN(data.devTokens)}</span>
+                    </div>
+                  </div>
+                  <div style={{height:5,background:"var(--sf3)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",borderRadius:3,width:`${pctTotal}%`,background:"linear-gradient(90deg,var(--blue),rgba(59,130,246,.3))",transition:"width .6s"}}/>
+                  </div>
+                  <div style={{fontSize:10,color:"var(--td)",marginTop:4,textAlign:"right"}}>{pctTotal.toFixed(1)}% del total egresado</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desglose por máquina: TOKEN_DIA */}
+          <div className="card">
+            <div className="card-t">⚙️ Desglose por Máquina — Tokens Ingresados (TOKEN_DIA)</div>
+            {(c.maquinas||[]).filter(m=>(Number(m.tokenDia)||0)>0).sort((a,b)=>(Number(b.tokenDia)||0)-(Number(a.tokenDia)||0)).map((m,i)=>{
+              const td=Number(m.tokenDia)||0;
+              const pctMaq=tokensEnMaquinas>0?((td/tokensEnMaquinas)*100):0;
+              return(
+                <div key={i} style={{background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:10,padding:"12px 14px",marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>{m.nombre}</div>
+                    <div style={{fontSize:18,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)"}}>{fN(td)}</div>
+                  </div>
+                  <div style={{height:5,background:"var(--sf3)",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",borderRadius:3,width:`${pctMaq}%`,background:"linear-gradient(90deg,var(--amber),rgba(245,158,11,.3))",transition:"width .6s"}}/>
+                  </div>
+                  <div style={{fontSize:10,color:"var(--td)",marginTop:4,textAlign:"right"}}>{pctMaq.toFixed(1)}% del total ingresado</div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Resumen de todas las alertas del ciclo */}
+          <div className="card">
+            <div className="card-t">📋 Resumen de Alertas — {c.sede} {c.fecha}</div>
+
+            {/* 1. Tokens egresados vs máquinas */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:8}}>
+              <div style={{fontSize:20}}>{nivelAlerta==="ok"?"✅":nivelAlerta==="warning"?"⚠️":"🚨"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--tb)"}}>Tokens egresados vs máquinas</div>
+                <div style={{fontSize:11,color:"var(--td)"}}>Egresados: {fN(tokensEgresados)} · Máquinas: {fN(tokensEnMaquinas)} · Dif: {fN(difEgresoAbs)}</div>
+              </div>
+              <span className={`badge ${nivelAlerta==="ok"?"g":nivelAlerta==="warning"?"a":"r"}`}>
+                {nivelAlerta==="ok"?"OK":nivelAlerta==="warning"?"REVISAR":"ALERTA"}
+              </span>
+            </div>
+
+            {/* 2. Conteo físico tokens */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:8}}>
+              <div style={{fontSize:20}}>{difTok===0?"✅":Math.abs(difTok)<=10?"⚠️":"🚨"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--tb)"}}>Conteo físico tokens vs contadores</div>
+                <div style={{fontSize:11,color:"var(--td)"}}>TOKEN_DIA: {fN(sumaTokenDia)} · Físico: {fN(tokFis)} · Dif: {fN(Math.abs(difTok))}</div>
+              </div>
+              <span className={`badge ${difTok===0?"g":Math.abs(difTok)<=10?"a":"r"}`}>
+                {difTok===0?"OK":Math.abs(difTok)<=10?"REVISAR":"ALERTA"}
+              </span>
+            </div>
+
+            {/* 3. Conteo físico efectivo */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:8}}>
+              <div style={{fontSize:20}}>{difMon===0?"✅":Math.abs(difMon)<=5000?"⚠️":"🚨"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--tb)"}}>Conteo físico efectivo vs contadores</div>
+                <div style={{fontSize:11,color:"var(--td)"}}>MONE_DIA: {fmt(sumaMoneDia)} · Físico: {fmt(efFis)} · Dif: {fmt(Math.abs(difMon))}</div>
+              </div>
+              <span className={`badge ${difMon===0?"g":Math.abs(difMon)<=5000?"a":"r"}`}>
+                {difMon===0?"OK":Math.abs(difMon)<=5000?"REVISAR":"ALERTA"}
+              </span>
+            </div>
+
+            {/* 4. Descuadres de efectivo en liquidaciones */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:8}}>
+              <div style={{fontSize:20}}>{descuadreAbs===0?"✅":"⚠️"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--tb)"}}>Descuadres de efectivo en liquidaciones</div>
+                <div style={{fontSize:11,color:"var(--td)"}}>Total descuadre: {fmt(totalDescuadreEfectivo)} ({totalDescuadreEfectivo>0?"sobrante":"faltante"})</div>
+              </div>
+              <span className={`badge ${descuadreAbs===0?"g":"a"}`}>
+                {descuadreAbs===0?"OK":"Δ "+fmt(descuadreAbs)}
+              </span>
+            </div>
+
+            {/* 5. Operadores faltantes */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:8}}>
+              <div style={{fontSize:20}}>{controlTokens.some(op=>op.saldoEsperado<0)?"🚨":"✅"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--tb)"}}>Operadores con tokens faltantes</div>
+                <div style={{fontSize:11,color:"var(--td)"}}>
+                  {controlTokens.filter(op=>op.saldoEsperado<0).length>0
+                    ?controlTokens.filter(op=>op.saldoEsperado<0).map(op=>`${op.nombre} (${fN(op.saldoEsperado)})`).join(", ")
+                    :"Todos los operadores cuadran"}
+                </div>
+              </div>
+              <span className={`badge ${controlTokens.some(op=>op.saldoEsperado<0)?"r":"g"}`}>
+                {controlTokens.some(op=>op.saldoEsperado<0)?controlTokens.filter(op=>op.saldoEsperado<0).length+" FALTANTE(S)":"OK"}
+              </span>
+            </div>
+
+            {/* 6. Ajustes de tokens */}
+            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:8}}>
+              <div style={{fontSize:20}}>{ajusteTokens===0?"➖":ajusteTokens<0?"📤":"📥"}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:"var(--tb)"}}>Ajustes de tokens (retiros/ingresos)</div>
+                <div style={{fontSize:11,color:"var(--td)"}}>
+                  {ajusteTokens===0?"Sin ajustes en este ciclo":`${ajusteTokens<0?"Retiro":"Ingreso"}: ${ajusteTokens>0?"+":""}${fN(ajusteTokens)} tokens${tr.ajusteMotivo?" — "+tr.ajusteMotivo:""}`}
+                </div>
+              </div>
+              <span className={`badge ${ajusteTokens===0?"g":ajusteTokens<0?"r":"b"}`}>
+                {ajusteTokens===0?"SIN AJUSTE":ajusteTokens<0?"RETIRO":"INGRESO"}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+setTimeout(()=>document.getElementById('loading').classList.add('hide'),600);
+  </script>
+</body>
+</html>
