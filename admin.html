@@ -314,6 +314,11 @@ function App(){
   const [refreshing,setRefreshing]=useState(false);
   const [apiStatus,setApiStatus]=useState("loading");
   const [filtroSede,setFiltroSede]=useState("todas");
+  const [filtroMes,setFiltroMes]=useState(()=>{
+    // Por defecto: mes actual (formato "3/2026")
+    const now=new Date();
+    return (now.getMonth()+1)+"/"+now.getFullYear();
+  });
   const [selCiclo,setSelCiclo]=useState(null);
   const [detTab,setDetTab]=useState("comparacion");
 
@@ -330,7 +335,43 @@ function App(){
   useEffect(()=>{cargar(false);},[cargar]);
 
   const sedes=useMemo(()=>[...new Set(ciclos.map(c=>c.sede))],[ciclos]);
-  const filtered=useMemo(()=>ciclos.filter(c=>filtroSede==="todas"||c.sede===filtroSede),[ciclos,filtroSede]);
+
+  // Extraer meses disponibles de los ciclos
+  const mesesDisponibles=useMemo(()=>{
+    const mesesSet=new Set();
+    ciclos.forEach(c=>{
+      const parts=c.fecha.split('/');
+      if(parts.length===3){
+        mesesSet.add(parts[1]+"/"+parts[2]); // "3/2026"
+      }
+    });
+    const arr=[...mesesSet];
+    // Ordenar descendente
+    arr.sort((a,b)=>{
+      const [ma,ya]=a.split('/').map(Number);
+      const [mb,yb]=b.split('/').map(Number);
+      return yb!==ya?yb-ya:mb-ma;
+    });
+    return arr;
+  },[ciclos]);
+
+  const nombreMes=(mesStr)=>{
+    const [m,y]=mesStr.split('/');
+    const nombres=["","Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+    return nombres[Number(m)]+" "+y;
+  };
+
+  const filtered=useMemo(()=>ciclos.filter(c=>{
+    if(filtroSede!=="todas"&&c.sede!==filtroSede) return false;
+    if(filtroMes!=="todos"){
+      const parts=c.fecha.split('/');
+      if(parts.length===3){
+        const mesCiclo=parts[1]+"/"+parts[2];
+        if(mesCiclo!==filtroMes) return false;
+      }
+    }
+    return true;
+  }),[ciclos,filtroSede,filtroMes]);
 
   // Global stats
   const gStats=useMemo(()=>{
@@ -378,8 +419,15 @@ function App(){
       <div className="shell">
         {/* Filtro rápido */}
         <div className="filters">
-          <div className="fg" style={{flex:1}}>
-            <span className="fl">Filtrar por sede</span>
+          <div className="fg">
+            <span className="fl">Mes</span>
+            <select className="fs" value={filtroMes} onChange={e=>{setFiltroMes(e.target.value);setSelCiclo(null);}}>
+              <option value="todos">Todos los meses</option>
+              {mesesDisponibles.map(m=><option key={m} value={m}>{nombreMes(m)}</option>)}
+            </select>
+          </div>
+          <div className="fg">
+            <span className="fl">Sede</span>
             <select className="fs" value={filtroSede} onChange={e=>{setFiltroSede(e.target.value);setSelCiclo(null);}}>
               <option value="todas">Todas las sedes</option>
               {sedes.map(s=><option key={s} value={s}>{s}</option>)}
