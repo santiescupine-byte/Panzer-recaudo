@@ -197,6 +197,13 @@ async function apiGet(action, params={}) {
   try { const r = await fetch(url.toString()); return await r.json(); } catch(e) { return null; }
 }
 
+async function apiPost(data) {
+  try {
+    const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(data) });
+    return await r.json();
+  } catch(e) { return null; }
+}
+
 // ============================================================
 // DEMO DATA — basado en el PDF real de Bolivariana 28/3/2026
 // ============================================================
@@ -496,6 +503,318 @@ function App(){
 
         {/* Detalle del ciclo seleccionado */}
         {selCiclo && <CicloDetail c={selCiclo} tab={detTab} setTab={setDetTab}/>}
+
+        {/* Gestión de contadores */}
+        <GestionContadores sedes={sedes} apiStatus={apiStatus}/>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// GESTIÓN DE CONTADORES — Revisar y editar contadores de máquinas
+// ============================================================
+function GestionContadores({sedes,apiStatus}){
+  const [open,setOpen]=useState(false);
+  const [sede,setSede]=useState("");
+  const [contadores,setContadores]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [config,setConfig]=useState(null);
+
+  // Edición
+  const [editMaq,setEditMaq]=useState(null); // nombre de la máquina que se edita
+  const [editGen,setEditGen]=useState("");
+  const [editGenToken,setEditGenToken]=useState("");
+  const [editMotivo,setEditMotivo]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState(null);
+
+  // Cargar config para saber qué máquinas tiene cada sede
+  useEffect(()=>{
+    if(open&&!config){
+      apiGet('getConfig').then(d=>{
+        if(d&&d.sedes) setConfig(d.sedes);
+      });
+    }
+  },[open,config]);
+
+  const cargarContadores=async(s)=>{
+    setSede(s);
+    if(!s){setContadores(null);return;}
+    setLoading(true);
+    setMsg(null);
+    setEditMaq(null);
+    const data=await apiGet('getHistorialMaquinas',{sede:s});
+    setContadores(data||{});
+    setLoading(false);
+  };
+
+  const maquinasSede=config&&sede?config[sede]?.maquinas||[]:[];
+
+  const iniciarEdicion=(nombre)=>{
+    const actual=contadores?.[nombre];
+    setEditMaq(nombre);
+    setEditGen(actual?actual.gen.toString():"0");
+    setEditGenToken(actual?actual.genToken.toString():"0");
+    setEditMotivo("");
+    setMsg(null);
+  };
+
+  const cancelarEdicion=()=>{
+    setEditMaq(null);
+    setMsg(null);
+  };
+
+  const guardarEdicion=async()=>{
+    if(!editMotivo.trim()){
+      setMsg({tipo:"error",texto:"Debes escribir un motivo para el cambio"});
+      return;
+    }
+    setSaving(true);
+    const res=await apiPost({
+      action:'actualizarContador',
+      sede,
+      maquina:editMaq,
+      gen:Number(editGen)||0,
+      genToken:Number(editGenToken)||0,
+      motivo:editMotivo.trim(),
+    });
+    setSaving(false);
+    if(res&&res.success){
+      setMsg({tipo:"ok",texto:"✅ Contador actualizado para "+editMaq});
+      setEditMaq(null);
+      // Recargar contadores
+      cargarContadores(sede);
+    } else {
+      setMsg({tipo:"error",texto:"Error: "+(res?.error||"Sin conexión")});
+    }
+  };
+
+  if(!open){
+    return(
+      <div style={{marginTop:30,marginBottom:20}}>
+        <button onClick={()=>setOpen(true)} style={{
+          width:"100%",padding:"16px 20px",
+          background:"linear-gradient(135deg,rgba(6,182,212,0.08),rgba(59,130,246,0.08))",
+          border:"1px solid rgba(6,182,212,0.25)",borderRadius:14,
+          cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:10,
+          color:"var(--cyan)",fontSize:14,fontWeight:700,fontFamily:"var(--font)",
+        }}>
+          ⚙️ Gestión de Contadores de Máquinas
+        </button>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{marginTop:30,marginBottom:20}}>
+      <div style={{
+        background:"var(--sf)",border:"1px solid var(--bd)",borderRadius:16,
+        overflow:"hidden",
+      }}>
+        {/* Header */}
+        <div style={{
+          padding:"18px 20px",borderBottom:"1px solid var(--bd)",
+          display:"flex",justifyContent:"space-between",alignItems:"center",
+          background:"linear-gradient(135deg,rgba(6,182,212,0.06),rgba(59,130,246,0.06))",
+        }}>
+          <div>
+            <div style={{fontSize:16,fontWeight:800,color:"var(--tb)"}}>⚙️ Gestión de Contadores</div>
+            <div style={{fontSize:11,color:"var(--td)",marginTop:2}}>
+              Revisa y edita los contadores actuales de las máquinas por sede
+            </div>
+          </div>
+          <button onClick={()=>setOpen(false)} style={{
+            background:"var(--sf2)",border:"1px solid var(--bd)",borderRadius:8,
+            padding:"6px 12px",color:"var(--td)",fontSize:12,fontWeight:600,
+            cursor:"pointer",fontFamily:"var(--font)",
+          }}>✕ Cerrar</button>
+        </div>
+
+        <div style={{padding:"16px 20px"}}>
+          {/* Selector de sede */}
+          <label style={{fontSize:11,fontWeight:700,color:"var(--td)",display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:".5px"}}>
+            Sede
+          </label>
+          <select value={sede} onChange={e=>cargarContadores(e.target.value)} style={{
+            width:"100%",background:"var(--sf2)",border:"1px solid var(--bd)",
+            borderRadius:10,padding:"10px 14px",color:"var(--tb)",fontSize:14,
+            fontFamily:"var(--font)",marginBottom:16,
+          }}>
+            <option value="">Seleccionar sede...</option>
+            {sedes.map(s=><option key={s} value={s}>{s}</option>)}
+          </select>
+
+          {/* Loading */}
+          {loading&&(
+            <div style={{textAlign:"center",padding:"30px 0"}}>
+              <div style={{width:28,height:28,border:"3px solid var(--bd)",borderTopColor:"var(--cyan)",borderRadius:"50%",animation:"spin .8s linear infinite",margin:"0 auto 10px"}}/>
+              <div style={{fontSize:12,color:"var(--td)"}}>Cargando contadores...</div>
+            </div>
+          )}
+
+          {/* Mensaje */}
+          {msg&&(
+            <div style={{
+              padding:"10px 14px",borderRadius:10,marginBottom:12,fontSize:12,fontWeight:600,
+              background:msg.tipo==="ok"?"rgba(16,185,129,0.08)":"rgba(239,68,68,0.08)",
+              border:msg.tipo==="ok"?"1px solid rgba(16,185,129,0.2)":"1px solid rgba(239,68,68,0.2)",
+              color:msg.tipo==="ok"?"var(--green)":"var(--red)",
+            }}>
+              {msg.texto}
+            </div>
+          )}
+
+          {/* Lista de máquinas */}
+          {!loading&&sede&&contadores!==null&&(
+            <div>
+              {maquinasSede.length===0&&(
+                <div style={{textAlign:"center",padding:"20px 0",color:"var(--td)",fontSize:13}}>
+                  No hay máquinas configuradas para esta sede.
+                </div>
+              )}
+
+              {maquinasSede.map(nombre=>{
+                const hist=contadores[nombre];
+                const isEditing=editMaq===nombre;
+
+                return(
+                  <div key={nombre} style={{
+                    background:isEditing?"rgba(6,182,212,0.06)":"var(--sf2)",
+                    border:isEditing?"2px solid rgba(6,182,212,0.3)":"1px solid var(--bd)",
+                    borderRadius:12,padding:"14px 16px",marginBottom:10,
+                    transition:"all .2s",
+                  }}>
+                    {/* Header de la máquina */}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:isEditing?12:0}}>
+                      <div>
+                        <div style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>{nombre}</div>
+                        {hist?(
+                          <div style={{fontSize:11,color:"var(--td)",marginTop:2}}>
+                            Último registro: {hist.cicloFecha}
+                          </div>
+                        ):(
+                          <div style={{fontSize:11,color:"var(--amber)",marginTop:2}}>
+                            ⚠ Sin historial previo
+                          </div>
+                        )}
+                      </div>
+                      {!isEditing&&(
+                        <button onClick={()=>iniciarEdicion(nombre)} style={{
+                          background:"rgba(6,182,212,0.1)",border:"1px solid rgba(6,182,212,0.25)",
+                          borderRadius:8,padding:"6px 12px",cursor:"pointer",
+                          color:"var(--cyan)",fontSize:11,fontWeight:700,fontFamily:"var(--font)",
+                        }}>
+                          ✏️ Editar
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Valores actuales (modo lectura) */}
+                    {!isEditing&&hist&&(
+                      <div style={{display:"flex",gap:10,marginTop:10}}>
+                        <div style={{flex:1,padding:"8px 12px",background:"var(--sf)",borderRadius:8,border:"1px solid var(--bd)"}}>
+                          <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>GEN $</div>
+                          <div style={{fontSize:16,fontWeight:800,color:"var(--amber)",fontFamily:"var(--mono)"}}>{fmt(hist.gen)}</div>
+                        </div>
+                        <div style={{flex:1,padding:"8px 12px",background:"var(--sf)",borderRadius:8,border:"1px solid var(--bd)"}}>
+                          <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px"}}>GEN TOKEN</div>
+                          <div style={{fontSize:16,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)"}}>{fN(hist.genToken)}</div>
+                        </div>
+                      </div>
+                    )}
+
+                    {!isEditing&&!hist&&(
+                      <div style={{marginTop:8,padding:"8px 12px",background:"rgba(245,158,11,0.06)",borderRadius:8,border:"1px solid rgba(245,158,11,0.15)",fontSize:11,color:"var(--amber)"}}>
+                        Esta máquina no tiene contadores registrados. Usa "Editar" para establecer los valores iniciales.
+                      </div>
+                    )}
+
+                    {/* Modo edición */}
+                    {isEditing&&(
+                      <div>
+                        <div style={{
+                          padding:"10px 12px",background:"rgba(245,158,11,0.06)",
+                          borderRadius:8,border:"1px solid rgba(245,158,11,0.15)",
+                          marginBottom:12,fontSize:11,color:"var(--amber)",lineHeight:1.6,
+                        }}>
+                          ⚠️ Cambiar estos valores afecta el próximo ciclo del tesorero. Los contadores anteriores se tomarán de estos nuevos valores.
+                          {hist&&<><br/>Valores actuales: GEN=${fmt(hist.gen)} · GEN_TOKEN={fN(hist.genToken)}</>}
+                        </div>
+
+                        <div style={{display:"flex",gap:10,marginBottom:10}}>
+                          <div style={{flex:1}}>
+                            <label style={{fontSize:10,fontWeight:700,color:"var(--td)",display:"block",marginBottom:4}}>
+                              Nuevo GEN $ (acumulado)
+                            </label>
+                            <input type="number" inputMode="numeric" value={editGen} onChange={e=>setEditGen(e.target.value)}
+                              style={{
+                                width:"100%",background:"var(--sf)",border:"2px solid rgba(6,182,212,0.3)",
+                                borderRadius:8,padding:"10px 12px",color:"var(--tb)",fontSize:15,fontWeight:700,
+                                fontFamily:"var(--mono)",outline:"none",
+                              }}
+                              placeholder="0"/>
+                          </div>
+                          <div style={{flex:1}}>
+                            <label style={{fontSize:10,fontWeight:700,color:"var(--td)",display:"block",marginBottom:4}}>
+                              Nuevo GEN TOKEN (acumulado)
+                            </label>
+                            <input type="number" inputMode="numeric" value={editGenToken} onChange={e=>setEditGenToken(e.target.value)}
+                              style={{
+                                width:"100%",background:"var(--sf)",border:"2px solid rgba(6,182,212,0.3)",
+                                borderRadius:8,padding:"10px 12px",color:"var(--tb)",fontSize:15,fontWeight:700,
+                                fontFamily:"var(--mono)",outline:"none",
+                              }}
+                              placeholder="0"/>
+                          </div>
+                        </div>
+
+                        <label style={{fontSize:10,fontWeight:700,color:"var(--td)",display:"block",marginBottom:4}}>
+                          Motivo del cambio <span style={{color:"var(--red)"}}>*</span>
+                        </label>
+                        <input type="text" value={editMotivo} onChange={e=>setEditMotivo(e.target.value)}
+                          placeholder="Ej: Se quemó el sistema, se reemplazó la máquina, reseteo por mantenimiento..."
+                          style={{
+                            width:"100%",background:"var(--sf)",border:"1px solid var(--bd)",
+                            borderRadius:8,padding:"10px 12px",color:"var(--tb)",fontSize:13,
+                            fontFamily:"var(--font)",outline:"none",marginBottom:12,
+                          }}/>
+
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={guardarEdicion} disabled={saving}
+                            style={{
+                              flex:1,padding:"10px",border:"none",borderRadius:10,
+                              background:"linear-gradient(135deg,var(--cyan),#0284c7)",
+                              color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",
+                              fontFamily:"var(--font)",opacity:saving?0.5:1,
+                            }}>
+                            {saving?"Guardando...":"💾 Guardar Cambio"}
+                          </button>
+                          <button onClick={cancelarEdicion}
+                            style={{
+                              padding:"10px 16px",border:"1px solid var(--bd)",borderRadius:10,
+                              background:"var(--sf2)",color:"var(--td)",fontSize:13,fontWeight:600,
+                              cursor:"pointer",fontFamily:"var(--font)",
+                            }}>
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Sin sede seleccionada */}
+          {!loading&&!sede&&(
+            <div style={{textAlign:"center",padding:"30px 0",color:"var(--td)"}}>
+              <div style={{fontSize:36,marginBottom:8}}>🏭</div>
+              <div style={{fontSize:13}}>Selecciona una sede para ver los contadores de sus máquinas</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
