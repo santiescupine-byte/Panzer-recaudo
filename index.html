@@ -1020,7 +1020,7 @@ function LiquidacionesList({ items, onAdd, onEdit, onDelete }) {
 function LiquidacionForm({ initial, index, sede, onSave }) {
   const [f, setF] = useState({
     operador: "", numRecibo: "", tokensBase: "", tokensVendidos: "",
-    valor: "", qr: "", devoluciones: "", devTokens: "", observaciones: "",
+    valor: "", qr: "", devoluciones: "", devTokens: "", tokensMembresia: "", observaciones: "",
     efectivoContado: "",
     ...initial,
   });
@@ -1029,7 +1029,7 @@ function LiquidacionForm({ initial, index, sede, onSave }) {
   const operadoresSede = getOperadores(sede);
 
   const efectivoEsperado = (Number(f.valor) || 0) - (Number(f.qr) || 0) - (Number(f.devoluciones) || 0);
-  const tokensRestantes = (Number(f.tokensBase) || 0) - (Number(f.tokensVendidos) || 0) - (Number(f.devTokens) || 0);
+  const tokensRestantes = (Number(f.tokensBase) || 0) - (Number(f.tokensVendidos) || 0) - (Number(f.devTokens) || 0) - (Number(f.tokensMembresia) || 0);
   const descuadre = f.efectivoContado ? (Number(f.efectivoContado) || 0) - efectivoEsperado : 0;
 
   const handleSave = () => {
@@ -1078,6 +1078,10 @@ function LiquidacionForm({ initial, index, sede, onSave }) {
           <div style={S.col}>
             <label style={S.label}>Dev. Tokens</label>
             <input style={S.input} type="number" inputMode="numeric" placeholder="0" value={f.devTokens} onChange={e => upd("devTokens", e.target.value)} />
+          </div>
+          <div style={S.col}>
+            <label style={S.label}>🎫 Membresía</label>
+            <input style={{ ...S.input, borderColor: "#8b5cf6", borderWidth: 2 }} type="number" inputMode="numeric" placeholder="0" value={f.tokensMembresia} onChange={e => upd("tokensMembresia", e.target.value)} />
           </div>
         </div>
         <div style={{ ...S.alertBox("info"), margin: 0 }}>
@@ -1662,6 +1666,7 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
     const liqsDeEsteOp = liquidaciones.filter(l => l.operador === nombre);
     const vendidosEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.tokensVendidos) || 0), 0);
     const devTokensEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.devTokens) || 0), 0);
+    const membresiaEsteC = liqsDeEsteOp.reduce((s, l) => s + (Number(l.tokensMembresia) || 0), 0);
     
     let saldoEsperado;
     if (baseSede) {
@@ -1670,11 +1675,11 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
       // El saldo individual no aplica, se calcula contra la base total
       saldoEsperado = null; // Se manejará a nivel sede
     } else if (historial) {
-      saldoEsperado = historial.saldo - vendidosEsteC - devTokensEsteC;
+      saldoEsperado = historial.saldo - vendidosEsteC - devTokensEsteC - membresiaEsteC;
     } else {
       saldoEsperado = null;
     }
-    return { nombre, historial, vendidosEsteC, devTokensEsteC, saldoEsperado };
+    return { nombre, historial, vendidosEsteC, devTokensEsteC, membresiaEsteC, saldoEsperado };
   });
 
   // Calcular saldo esperado total
@@ -1684,13 +1689,15 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
     totalSaldoAnterior = baseSede.saldo || 0;
     const totalVendido = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
     const totalDev = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
-    totalSaldoEsperado = totalSaldoAnterior - totalVendido - totalDev;
+    const totalMemb = operadorData.reduce((s, o) => s + (o.membresiaEsteC || 0), 0);
+    totalSaldoEsperado = totalSaldoAnterior - totalVendido - totalDev - totalMemb;
   } else {
     totalSaldoAnterior = operadorData.reduce((s, o) => s + (o.historial?.saldo || 0), 0);
     totalSaldoEsperado = operadorData.reduce((s, o) => s + (o.saldoEsperado || 0), 0);
   }
   const totalVendidosCiclo = operadorData.reduce((s, o) => s + o.vendidosEsteC, 0);
   const totalDevTokensCiclo = operadorData.reduce((s, o) => s + o.devTokensEsteC, 0);
+  const totalMembresiaC = operadorData.reduce((s, o) => s + (o.membresiaEsteC || 0), 0);
   const ajusteNum = Number(ajusteTokens) || 0;
   const totalTokensDisponible = tokensMaq + totalSaldoEsperado + ajusteNum;
   const tokensRestante = totalTokensDisponible - totalTokensRepartido;
