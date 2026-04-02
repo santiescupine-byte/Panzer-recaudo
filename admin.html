@@ -452,6 +452,9 @@ function App(){
         </div>
 
         {/* Ciclos cards */}
+        <div className="stitle">📊 Tendencia de Recaudo por Sede</div>
+        <TendenciaChart ciclos={ciclos} filtroMes={filtroMes}/>
+
         <div className="stitle">📋 Selecciona un ciclo para inspeccionar</div>
         <div className="ciclo-cards">
           {filtered.map(c=>{
@@ -492,6 +495,164 @@ function App(){
 
         {/* Detalle del ciclo seleccionado */}
         {selCiclo && <CicloDetail c={selCiclo} tab={detTab} setTab={setDetTab}/>}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// TENDENCIA CHART — Gráfica de recaudo por sede
+// ============================================================
+function TendenciaChart({ciclos,filtroMes}){
+  const sedeColors={"Bolivariana":"#f59e0b","Toberín":"#3b82f6","San Felipe":"#10b981","Bello":"#8b5cf6","Marly":"#06b6d4","Perdomo":"#ec4899"};
+
+  // Parsear fecha
+  const parseF=(str)=>{
+    const p=str.split('/');
+    if(p.length===3) return new Date(p[2],p[1]-1,p[0]);
+    return new Date(0);
+  };
+
+  // Filtrar ciclos por mes si aplica
+  const ciclosFilt=useMemo(()=>{
+    if(filtroMes==="todos") return ciclos;
+    return ciclos.filter(c=>{
+      const p=c.fecha.split('/');
+      if(p.length===3) return (p[1]+"/"+p[2])===filtroMes;
+      return false;
+    });
+  },[ciclos,filtroMes]);
+
+  // Agrupar por fecha y sede
+  const data=useMemo(()=>{
+    const map={};
+    ciclosFilt.forEach(c=>{
+      const fecha=c.fecha;
+      const el=c.liquidaciones.reduce((s,l)=>s+(Number(l.efectivo)||0),0);
+      const em=Number(c.conteoFisico?.efectivoTotal)||0;
+      const gas=(c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0);
+      const consignar=el+em-gas;
+      if(!map[fecha]) map[fecha]={fecha,sedes:{}};
+      // Si hay múltiples ciclos de la misma sede en la misma fecha, sumar
+      if(!map[fecha].sedes[c.sede]) map[fecha].sedes[c.sede]=0;
+      map[fecha].sedes[c.sede]+=consignar;
+    });
+    // Ordenar por fecha
+    return Object.values(map).sort((a,b)=>parseF(a.fecha)-parseF(b.fecha));
+  },[ciclosFilt]);
+
+  const allSedes=useMemo(()=>{
+    const s=new Set();
+    data.forEach(d=>Object.keys(d.sedes).forEach(sede=>s.add(sede)));
+    return [...s];
+  },[data]);
+
+  const [hoveredPoint,setHoveredPoint]=useState(null);
+
+  if(data.length<2) return (
+    <div className="card" style={{textAlign:"center",padding:"30px 20px",marginBottom:20}}>
+      <div style={{fontSize:13,color:"var(--td)"}}>Se necesitan al menos 2 fechas para mostrar la tendencia. {filtroMes!=="todos"&&"Prueba seleccionando \"Todos los meses\"."}</div>
+    </div>
+  );
+
+  // Chart dimensions
+  const W=800,H=300,padL=70,padR=20,padT=20,padB=50;
+  const chartW=W-padL-padR, chartH=H-padT-padB;
+
+  // Find max value
+  let maxVal=0;
+  data.forEach(d=>Object.values(d.sedes).forEach(v=>{if(v>maxVal)maxVal=v;}));
+  maxVal=Math.ceil(maxVal/1000000)*1000000||1000000;
+
+  // Scales
+  const xScale=(i)=>padL+(i/(data.length-1))*chartW;
+  const yScale=(v)=>padT+chartH-(v/maxVal)*chartH;
+
+  // Y axis ticks
+  const yTicks=5;
+  const yTickVals=Array.from({length:yTicks+1},(_,i)=>(maxVal/yTicks)*i);
+
+  return(
+    <div className="card" style={{marginBottom:20,padding:"20px 16px",overflow:"hidden"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:13,color:"var(--td)"}}>Valor a consignar por ciclo</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {allSedes.map(s=>(
+            <div key={s} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:600,color:sedeColors[s]||"var(--t)"}}>
+              <div style={{width:10,height:10,borderRadius:3,background:sedeColors[s]||"var(--td)"}}/>
+              {s}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{overflowX:"auto",overflowY:"visible"}}>
+        <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",minWidth:500,height:"auto",fontFamily:"var(--font)"}}>
+          {/* Grid lines */}
+          {yTickVals.map((v,i)=>(
+            <g key={i}>
+              <line x1={padL} y1={yScale(v)} x2={W-padR} y2={yScale(v)} stroke="var(--bd)" strokeWidth="0.5" strokeDasharray={i===0?"none":"4,4"}/>
+              <text x={padL-8} y={yScale(v)+4} textAnchor="end" fill="var(--td)" fontSize="10" fontFamily="var(--mono)">
+                ${(v/1000000).toFixed(1)}M
+              </text>
+            </g>
+          ))}
+
+          {/* X axis labels */}
+          {data.map((d,i)=>{
+            const x=xScale(i);
+            // Show label every N points to avoid overlap
+            const showLabel=data.length<=10||i%(Math.ceil(data.length/10))===0||i===data.length-1;
+            return showLabel?(
+              <text key={i} x={x} y={H-8} textAnchor="middle" fill="var(--td)" fontSize="9" fontFamily="var(--mono)">
+                {d.fecha.split('/').slice(0,2).join('/')}
+              </text>
+            ):null;
+          })}
+
+          {/* Lines and dots per sede */}
+          {allSedes.map(sede=>{
+            const color=sedeColors[sede]||"#fff";
+            const points=[];
+            data.forEach((d,i)=>{
+              if(d.sedes[sede]!==undefined){
+                points.push({x:xScale(i),y:yScale(d.sedes[sede]),val:d.sedes[sede],fecha:d.fecha,i});
+              }
+            });
+            if(points.length<2) return null;
+            const pathD=points.map((p,j)=>(j===0?"M":"L")+p.x+","+p.y).join(" ");
+            return(
+              <g key={sede}>
+                {/* Area fill */}
+                <path d={pathD+" L"+points[points.length-1].x+","+yScale(0)+" L"+points[0].x+","+yScale(0)+" Z"} fill={color} opacity="0.06"/>
+                {/* Line */}
+                <path d={pathD} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                {/* Dots */}
+                {points.map((p,j)=>(
+                  <g key={j}>
+                    <circle cx={p.x} cy={p.y} r={hoveredPoint&&hoveredPoint.sede===sede&&hoveredPoint.i===p.i?6:3.5} fill={color} stroke="var(--bg)" strokeWidth="2" style={{cursor:"pointer",transition:"r 0.2s"}}
+                      onMouseEnter={()=>setHoveredPoint({sede,i:p.i,val:p.val,fecha:p.fecha,x:p.x,y:p.y})}
+                      onMouseLeave={()=>setHoveredPoint(null)}
+                    />
+                  </g>
+                ))}
+              </g>
+            );
+          })}
+
+          {/* Tooltip */}
+          {hoveredPoint&&(
+            <g>
+              <rect x={Math.min(hoveredPoint.x-60,W-140)} y={Math.max(hoveredPoint.y-48,5)} width="120" height="36" rx="8" fill="var(--sf2)" stroke="var(--bd)" strokeWidth="1"/>
+              <text x={Math.min(hoveredPoint.x,W-80)} y={Math.max(hoveredPoint.y-32,21)} textAnchor="middle" fill={sedeColors[hoveredPoint.sede]||"#fff"} fontSize="11" fontWeight="700" fontFamily="var(--mono)">
+                {fmt(hoveredPoint.val)}
+              </text>
+              <text x={Math.min(hoveredPoint.x,W-80)} y={Math.max(hoveredPoint.y-18,35)} textAnchor="middle" fill="var(--td)" fontSize="9">
+                {hoveredPoint.sede} · {hoveredPoint.fecha}
+              </text>
+            </g>
+          )}
+        </svg>
       </div>
     </div>
   );
