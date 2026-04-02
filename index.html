@@ -758,9 +758,16 @@ function App() {
         {ciclo && tab === "liquidaciones" && !subPage && (
           <LiquidacionesList
             items={liquidaciones}
+            sede={ciclo.sede}
             onAdd={() => { setEditingLiq({}); setSubPage("nueva-liq"); }}
             onEdit={(l) => { setEditingLiq(l); setSubPage("nueva-liq"); }}
             onDelete={(id) => setLiquidaciones(prev => prev.filter(l => l.id !== id))}
+            onImport={(nuevasLiqs) => {
+              setLiquidaciones(prev => [
+                ...prev,
+                ...nuevasLiqs.map(l => ({ ...l, id: Date.now() + Math.random() }))
+              ]);
+            }}
           />
         )}
 
@@ -954,8 +961,87 @@ function InicioPage({ onStart, apiConfig, apiLoading }) {
 // ============================================================
 // LIQUIDACIONES LIST
 // ============================================================
-function LiquidacionesList({ items, onAdd, onEdit, onDelete }) {
+function LiquidacionesList({ items, sede, onAdd, onEdit, onDelete, onImport }) {
   const total = items.reduce((s, l) => s + (Number(l.efectivo) || 0), 0);
+
+  // Estado para el modal de importar pendientes
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [pendientes, setPendientes] = useState([]);
+  const [loadingPendientes, setLoadingPendientes] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [importando, setImportando] = useState(false);
+
+  const cargarPendientes = async () => {
+    setLoadingPendientes(true);
+    setShowImportModal(true);
+    setPendientes([]);
+    setSelectedIds([]);
+    try {
+      const res = await apiGet('getLiquidacionesPendientes', { sede });
+      if (res && res.success && res.pendientes) {
+        setPendientes(res.pendientes);
+        setSelectedIds(res.pendientes.map(p => p.id)); // Todas seleccionadas por defecto
+      }
+    } catch(e) {}
+    setLoadingPendientes(false);
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  const toggleAll = () => {
+    if (selectedIds.length === pendientes.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(pendientes.map(p => p.id));
+    }
+  };
+
+  const importarSeleccionadas = async () => {
+    if (selectedIds.length === 0) return;
+    setImportando(true);
+
+    // 1. Filtrar las liquidaciones seleccionadas
+    const seleccionadas = pendientes.filter(p => selectedIds.includes(p.id));
+
+    // 2. Mapear al formato que usa el tesorero (sin efectivoContado, lo deja vacío para que el tesorero lo llene)
+    const liqsParaImportar = seleccionadas.map(p => ({
+      operador: p.operador,
+      numRecibo: p.numRecibo,
+      tokensBase: p.tokensBase,
+      tokensVendidos: p.tokensVendidos,
+      devTokens: p.devTokens,
+      tokensMembresia: p.tokensMembresia,
+      tokensRestantes: p.tokensRestantes,
+      valor: p.valor,
+      qr: p.qr,
+      devoluciones: p.devoluciones,
+      efectivo: p.efectivo,
+      efectivoContado: "",  // El tesorero debe contar y llenar esto
+      descuadre: 0,
+      observaciones: p.observaciones + (p.observaciones ? " " : "") + "[Importado del operador]",
+      _origenOperador: p.id,  // Referencia al ID original
+    }));
+
+    // 3. Marcar como importadas en Google Sheets
+    try {
+      await apiPost({
+        action: 'marcarLiquidacionesImportadas',
+        ids: selectedIds,
+      });
+    } catch(e) {
+      // Si falla el marcado, igual importamos localmente
+    }
+
+    // 4. Agregar al estado del tesorero
+    onImport(liqsParaImportar);
+
+    setImportando(false);
+    setShowImportModal(false);
+  };
 
   return (
     <div>
@@ -970,11 +1056,25 @@ function LiquidacionesList({ items, onAdd, onEdit, onDelete }) {
         </div>
       </div>
 
+      {/* Botón Importar Pendientes */}
+      <button
+        style={{
+          width: "100%", padding: "12px 16px", marginBottom: 14,
+          background: "linear-gradient(135deg, rgba(139,92,246,0.12), rgba(59,130,246,0.12))",
+          border: "1px solid rgba(139,92,246,0.3)", borderRadius: 12,
+          color: "#a78bfa", fontSize: 13, fontWeight: 700,
+          cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        }}
+        onClick={cargarPendientes}
+      >
+        📥 Importar Liquidaciones de Operadores
+      </button>
+
       {items.length === 0 && (
         <div style={S.emptyState}>
           <div style={{ fontSize: 48, marginBottom: 12 }}>📝</div>
           <div style={{ fontSize: 15, fontWeight: 600, color: colors.textBright, marginBottom: 6 }}>Sin liquidaciones</div>
-          <div style={{ fontSize: 13 }}>Registra la primera liquidación del ciclo</div>
+          <div style={{ fontSize: 13 }}>Registra la primera liquidación o importa las de los operadores</div>
         </div>
       )}
 
@@ -984,6 +1084,12 @@ function LiquidacionesList({ items, onAdd, onEdit, onDelete }) {
             <div>
               <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>
                 Liquidación {i + 1}
+                {l._origenOperador && (
+                  <span style={{
+                    marginLeft: 6, fontSize: 10, padding: "2px 6px", borderRadius: 6,
+                    background: "rgba(139,92,246,0.15)", color: "#a78bfa", fontWeight: 600,
+                  }}>📲 Operador</span>
+                )}
               </div>
               <div style={{ fontSize: 12, color: colors.textDim, marginTop: 2 }}>
                 {l.operador || "Sin operador"} · Recibo #{l.numRecibo || "—"} · {fmtNum(l.tokensVendidos)} tokens
@@ -1010,6 +1116,183 @@ function LiquidacionesList({ items, onAdd, onEdit, onDelete }) {
       <button style={{ ...S.btnPrimary, marginTop: 8 }} onClick={onAdd}>
         {Icons.plus} Agregar Liquidación
       </button>
+
+      {/* ===== MODAL IMPORTAR PENDIENTES ===== */}
+      {showImportModal && (
+        <div style={{
+          position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)",
+          display: "flex", alignItems: "flex-end", justifyContent: "center",
+          zIndex: 1000, padding: 0,
+        }} onClick={() => !importando && setShowImportModal(false)}>
+          <div style={{
+            background: colors.surface, borderRadius: "20px 20px 0 0",
+            width: "100%", maxWidth: 520, maxHeight: "85vh",
+            overflow: "hidden", display: "flex", flexDirection: "column",
+          }} onClick={e => e.stopPropagation()}>
+
+            {/* Header del modal */}
+            <div style={{
+              padding: "18px 20px", borderBottom: `1px solid ${colors.border}`,
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+            }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: colors.textBright }}>
+                  📥 Liquidaciones Pendientes
+                </div>
+                <div style={{ fontSize: 12, color: colors.textDim, marginTop: 2 }}>
+                  Enviadas por operadores de <strong style={{ color: colors.accent }}>{sede}</strong>
+                </div>
+              </div>
+              <button
+                style={{ background: "none", border: "none", color: colors.textDim, fontSize: 20, cursor: "pointer", padding: 4 }}
+                onClick={() => !importando && setShowImportModal(false)}
+              >✕</button>
+            </div>
+
+            {/* Contenido del modal */}
+            <div style={{ flex: 1, overflow: "auto", padding: "12px 20px" }}>
+
+              {loadingPendientes && (
+                <div style={{ textAlign: "center", padding: "40px 0" }}>
+                  <div style={{
+                    width: 32, height: 32, border: `3px solid ${colors.border}`,
+                    borderTopColor: colors.accent, borderRadius: "50%",
+                    animation: "spin .8s linear infinite", margin: "0 auto 12px",
+                  }}/>
+                  <div style={{ fontSize: 13, color: colors.textDim }}>Consultando liquidaciones pendientes...</div>
+                </div>
+              )}
+
+              {!loadingPendientes && pendientes.length === 0 && (
+                <div style={{ textAlign: "center", padding: "40px 0" }}>
+                  <div style={{ fontSize: 40, marginBottom: 10 }}>✅</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: colors.textBright }}>Sin pendientes</div>
+                  <div style={{ fontSize: 12, color: colors.textDim, marginTop: 4 }}>
+                    No hay liquidaciones de operadores esperando importación para esta sede.
+                  </div>
+                </div>
+              )}
+
+              {!loadingPendientes && pendientes.length > 0 && (
+                <div>
+                  {/* Seleccionar todas */}
+                  <button
+                    style={{
+                      width: "100%", padding: "10px 14px", marginBottom: 10,
+                      background: colors.surface2, border: `1px solid ${colors.border}`,
+                      borderRadius: 10, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 10,
+                      color: colors.text, fontSize: 13, fontWeight: 600,
+                    }}
+                    onClick={toggleAll}
+                  >
+                    <span style={{
+                      width: 20, height: 20, borderRadius: 5,
+                      border: selectedIds.length === pendientes.length
+                        ? "2px solid #8b5cf6" : `2px solid ${colors.border}`,
+                      background: selectedIds.length === pendientes.length
+                        ? "rgba(139,92,246,0.2)" : "transparent",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 12, color: "#a78bfa",
+                    }}>
+                      {selectedIds.length === pendientes.length ? "✓" : ""}
+                    </span>
+                    Seleccionar todas ({pendientes.length})
+                  </button>
+
+                  {/* Lista de pendientes */}
+                  {pendientes.map(p => {
+                    const selected = selectedIds.includes(p.id);
+                    return (
+                      <div key={p.id}
+                        style={{
+                          padding: "12px 14px", marginBottom: 8,
+                          background: selected ? "rgba(139,92,246,0.08)" : colors.surface2,
+                          border: `1px solid ${selected ? "rgba(139,92,246,0.3)" : colors.border}`,
+                          borderRadius: 12, cursor: "pointer",
+                          transition: "all .15s",
+                        }}
+                        onClick={() => toggleSelect(p.id)}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                          <span style={{
+                            width: 20, height: 20, borderRadius: 5, flexShrink: 0, marginTop: 1,
+                            border: selected ? "2px solid #8b5cf6" : `2px solid ${colors.border}`,
+                            background: selected ? "rgba(139,92,246,0.2)" : "transparent",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 12, color: "#a78bfa",
+                          }}>
+                            {selected ? "✓" : ""}
+                          </span>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between" }}>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: colors.textBright }}>
+                                {p.operador}
+                              </div>
+                              <div style={{ fontSize: 14, fontWeight: 700, color: colors.green }}>
+                                {fmt(p.efectivo)}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: 11, color: colors.textDim, marginTop: 3 }}>
+                              Recibo #{p.numRecibo} · {fmtNum(p.tokensVendidos)} tokens · {p.fecha} {p.hora}
+                            </div>
+                            {p.observaciones && (
+                              <div style={{ fontSize: 11, color: colors.textDim, marginTop: 3, fontStyle: "italic" }}>
+                                "{p.observaciones}"
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Footer del modal */}
+            {!loadingPendientes && pendientes.length > 0 && (
+              <div style={{
+                padding: "14px 20px", borderTop: `1px solid ${colors.border}`,
+                background: colors.surface,
+              }}>
+                <div style={{
+                  fontSize: 12, color: colors.textDim, marginBottom: 10, textAlign: "center",
+                }}>
+                  {selectedIds.length} de {pendientes.length} seleccionadas ·
+                  Efectivo total: <strong style={{ color: colors.green }}>
+                    {fmt(pendientes.filter(p => selectedIds.includes(p.id)).reduce((s, p) => s + p.efectivo, 0))}
+                  </strong>
+                </div>
+                <div style={{ fontSize: 11, color: colors.amber, marginBottom: 10, textAlign: "center" }}>
+                  ⚠️ Al importar, deberás editar cada liquidación para agregar el efectivo contado
+                </div>
+                <button
+                  style={{
+                    ...S.btnPrimary,
+                    background: selectedIds.length > 0
+                      ? "linear-gradient(135deg, #8b5cf6, #6d28d9)"
+                      : colors.surface2,
+                    opacity: selectedIds.length > 0 ? 1 : 0.4,
+                  }}
+                  disabled={selectedIds.length === 0 || importando}
+                  onClick={importarSeleccionadas}
+                >
+                  {importando ? (
+                    <><span style={{
+                      width: 16, height: 16, border: "2px solid rgba(255,255,255,0.3)",
+                      borderTopColor: "#fff", borderRadius: "50%",
+                      animation: "spin .8s linear infinite", display: "inline-block",
+                    }}/> Importando...</>
+                  ) : (
+                    <>📥 Importar {selectedIds.length} liquidación{selectedIds.length !== 1 ? "es" : ""}</>
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
