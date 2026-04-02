@@ -190,7 +190,7 @@ function App(){
 
   // Formulario
   const [f,setF]=useState({
-    numRecibo:"", tokensBase:"", tokensVendidos:"", devTokens:"",
+    numRecibo:"", tokensBase:"", tokensVendidos:"", devTokens:"", tokensMembresia:"",
     valor:"", qr:"", devoluciones:"", observaciones:"",
   });
 
@@ -213,7 +213,7 @@ function App(){
 
   // Cálculos
   const efectivoEsperado=(Number(f.valor)||0)-(Number(f.qr)||0)-(Number(f.devoluciones)||0);
-  const tokensRestantes=(Number(f.tokensBase)||0)-(Number(f.tokensVendidos)||0)-(Number(f.devTokens)||0);
+  const tokensRestantes=(Number(f.tokensBase)||0)-(Number(f.tokensVendidos)||0)-(Number(f.devTokens)||0)-(Number(f.tokensMembresia)||0);
 
   // Enviar liquidación
   const enviar=async()=>{
@@ -228,6 +228,7 @@ function App(){
       tokensBase:Number(f.tokensBase)||0,
       tokensVendidos:Number(f.tokensVendidos)||0,
       devTokens:Number(f.devTokens)||0,
+      tokensMembresia:Number(f.tokensMembresia)||0,
       tokensRestantes,
       valor:Number(f.valor)||0,
       qr:Number(f.qr)||0,
@@ -254,7 +255,7 @@ function App(){
   };
 
   const nuevaLiquidacion=()=>{
-    setF({ numRecibo:"", tokensBase:"", tokensVendidos:"", devTokens:"", valor:"", qr:"", devoluciones:"", observaciones:"" });
+    setF({ numRecibo:"", tokensBase:"", tokensVendidos:"", devTokens:"", tokensMembresia:"", valor:"", qr:"", devoluciones:"", observaciones:"" });
     setPage("formulario");
     setMsg(null);
   };
@@ -364,9 +365,15 @@ function App(){
                   <label className="label">Vendidos</label>
                   <input className="input" type="number" inputMode="numeric" placeholder="0" value={f.tokensVendidos} onChange={e=>upd("tokensVendidos",e.target.value)}/>
                 </div>
+              </div>
+              <div className="row">
                 <div className="col">
                   <label className="label">Dev. Tokens</label>
                   <input className="input" type="number" inputMode="numeric" placeholder="0" value={f.devTokens} onChange={e=>upd("devTokens",e.target.value)}/>
+                </div>
+                <div className="col">
+                  <label className="label">🎫 Membresía</label>
+                  <input className="input" type="number" inputMode="numeric" placeholder="0" value={f.tokensMembresia} onChange={e=>upd("tokensMembresia",e.target.value)} style={{borderColor:"#8b5cf6",borderWidth:2}}/>
                 </div>
               </div>
               <div className="alert blue" style={{margin:0}}>
@@ -412,6 +419,7 @@ function App(){
               <div className="result-row"><span className="result-label">Recibo</span><span className="result-value">{f.numRecibo||"—"}</span></div>
               <div className="result-row"><span className="result-label">Tokens vendidos</span><span className="result-value" style={{color:"var(--amber)"}}>{fN(f.tokensVendidos)}</span></div>
               <div className="result-row"><span className="result-label">Dev. tokens</span><span className="result-value" style={{color:"var(--purple)"}}>{fN(f.devTokens)}</span></div>
+              <div className="result-row"><span className="result-label">🎫 Membresía</span><span className="result-value" style={{color:"var(--purple)"}}>{fN(f.tokensMembresia)}</span></div>
               <div className="result-row"><span className="result-label">Valor total</span><span className="result-value">{fmt(f.valor)}</span></div>
               <div className="result-row"><span className="result-label">QR</span><span className="result-value" style={{color:"var(--blue)"}}>{fmt(f.qr)}</span></div>
               <div className="result-row"><span className="result-label">Devoluciones $</span><span className="result-value" style={{color:"var(--red)"}}>{fmt(f.devoluciones)}</span></div>
