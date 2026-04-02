@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Panzer — Liquidación Operador</title>
+  <link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;Panzer Operador&quot;,&quot;short_name&quot;:&quot;Panzer Op&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#080c14&quot;,&quot;theme_color&quot;:&quot;#3b82f6&quot;}">
+  <meta name="theme-color" content="#080c14">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:#080c14;--sf:#0f1520;--sf2:#161e2e;--sf3:#1c2640;
+      --bd:#243049;--bd2:#2d3d5a;
+      --blue:#3b82f6;--blue-d:rgba(59,130,246,0.12);--blue-g:rgba(59,130,246,0.06);
+      --amber:#f59e0b;--amber-d:rgba(245,158,11,0.12);
+      --green:#10b981;--green-d:rgba(16,185,129,0.10);
+      --red:#ef4444;--red-d:rgba(239,68,68,0.10);
+      --purple:#8b5cf6;
+      --t:#e2e8f0;--td:#64748b;--tb:#f8fafc;
+      --font:'Outfit',system-ui,sans-serif;
+      --r:14px;
+    }
+    *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+    body{background:var(--bg);overflow-x:hidden;font-family:var(--font);color:var(--t);}
+    input,select,button,textarea{font-family:inherit;}
+    input[type="number"]::-webkit-inner-spin-button{-webkit-appearance:none;}
+    input[type="number"]{-moz-appearance:textfield;}
+    ::selection{background:rgba(59,130,246,0.25);}
+
+    #loading{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;transition:opacity .5s;}
+    #loading.hide{opacity:0;pointer-events:none;}
+    .loader{width:40px;height:40px;border:3px solid var(--bd);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin-bottom:16px;}
+    @keyframes spin{to{transform:rotate(360deg);}}
+
+    .app{max-width:480px;margin:0 auto;min-height:100vh;position:relative;padding-bottom:20px;}
+
+    .header{
+      background:linear-gradient(135deg,var(--sf),var(--sf2));
+      border-bottom:1px solid var(--bd);padding:16px 20px;
+      display:flex;align-items:center;gap:12px;
+      position:sticky;top:0;z-index:50;
+    }
+    .header img{height:28px;}
+    .header h1{font-size:17px;font-weight:700;color:var(--tb);}
+    .header-sub{font-size:11px;color:var(--td);}
+    .header-badge{
+      margin-left:auto;padding:4px 10px;border-radius:20px;
+      font-size:10px;font-weight:700;
+      background:var(--blue-d);color:var(--blue);
+    }
+
+    .page{padding:16px;}
+
+    .card{
+      background:var(--sf);border:1px solid var(--bd);
+      border-radius:var(--r);padding:20px;margin-bottom:14px;
+    }
+    .card-t{
+      font-size:15px;font-weight:700;color:var(--tb);margin-bottom:14px;
+      display:flex;align-items:center;gap:8px;
+    }
+    .label{font-size:12px;font-weight:600;color:var(--td);margin-bottom:6px;display:block;letter-spacing:.3px;}
+    .input{
+      width:100%;background:var(--sf2);border:1px solid var(--bd);
+      border-radius:10px;padding:12px 14px;color:var(--tb);font-size:15px;
+      outline:none;margin-bottom:12px;
+    }
+    .input:focus{border-color:var(--blue);}
+    .input-accent{border-color:var(--blue);border-width:2px;}
+    .select{
+      width:100%;background:var(--sf2);border:1px solid var(--bd);
+      border-radius:10px;padding:12px 14px;color:var(--tb);font-size:15px;
+      outline:none;margin-bottom:12px;-webkit-appearance:none;
+    }
+    .row{display:flex;gap:10px;}
+    .col{flex:1;}
+    .sep{height:1px;background:var(--bd);margin:14px 0;}
+
+    .result-row{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:10px 0;border-bottom:1px solid var(--bd);
+    }
+    .result-row:last-child{border-bottom:none;}
+    .result-label{font-size:13px;color:var(--td);}
+    .result-value{font-size:15px;font-weight:700;color:var(--tb);}
+
+    .btn-primary{
+      width:100%;
+      background:linear-gradient(135deg,var(--blue),#2563eb);
+      border:none;border-radius:12px;padding:14px 20px;
+      color:#fff;font-size:15px;font-weight:700;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+    }
+    .btn-primary:disabled{opacity:.4;cursor:default;}
+
+    .btn-secondary{
+      width:100%;background:var(--sf2);border:1px solid var(--bd);
+      border-radius:12px;padding:14px 20px;color:var(--t);
+      font-size:14px;font-weight:600;cursor:pointer;
+      display:flex;align-items:center;justify-content:center;gap:8px;
+    }
+
+    .alert{
+      padding:14px 16px;border-radius:12px;margin-bottom:14px;
+      display:flex;align-items:center;gap:10px;font-size:13px;font-weight:600;
+    }
+    .alert.green{background:var(--green-d);border:1px solid rgba(16,185,129,.25);color:var(--green);}
+    .alert.red{background:var(--red-d);border:1px solid rgba(239,68,68,.25);color:var(--red);}
+    .alert.blue{background:var(--blue-d);border:1px solid rgba(59,130,246,.25);color:var(--blue);}
+    .alert.amber{background:var(--amber-d);border:1px solid rgba(245,158,11,.25);color:var(--amber);}
+
+    .info-read{
+      background:var(--sf3);border:1px solid var(--bd);
+      border-radius:10px;padding:12px 14px;color:var(--td);
+      font-size:15px;margin-bottom:12px;
+    }
+
+    .success-screen{
+      text-align:center;padding:60px 20px;
+    }
+    .success-icon{font-size:64px;margin-bottom:16px;}
+    .success-title{font-size:22px;font-weight:800;color:var(--green);margin-bottom:8px;}
+    .success-sub{font-size:14px;color:var(--td);line-height:1.6;margin-bottom:24px;}
+
+    .loading-bar{
+      padding:12px 20px;background:var(--blue-d);
+      display:flex;align-items:center;gap:10px;
+    }
+    .loading-spinner{
+      width:16px;height:16px;border:2px solid var(--bd);
+      border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;
+    }
+    .loading-text{font-size:13px;color:var(--blue);}
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div class="loader"></div>
+    <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" style="width:160px;margin-bottom:12px;" alt="Panzer">
+    <div style="font-size:13px;color:var(--td);">Cargando formulario...</div>
+  </div>
+  <div id="root"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+
+  <script type="text/babel">
+const {useState,useEffect} = React;
+
+// ============================================================
+// API — misma URL del sistema de recaudo
+// ============================================================
+const API_URL = 'https://script.google.com/macros/s/AKfycbyANxSp6rnaIY9UZxHlT3TzENnxpmbS8oDtUSxYZ5TTmgvDdhshQS2KZ2XAaS7AmnAq/exec';
+
+const CONFIG = { tesoreros:[], sedes:{} };
+
+async function apiGet(action, params={}) {
+  const url = new URL(API_URL);
+  url.searchParams.set('action', action);
+  for (const [k,v] of Object.entries(params)) url.searchParams.set(k,v);
+  try { const r = await fetch(url.toString()); return await r.json(); } catch(e) { return null; }
+}
+
+async function apiPost(data) {
+  try {
+    const r = await fetch(API_URL, { method:'POST', headers:{'Content-Type':'text/plain'}, body:JSON.stringify(data) });
+    return await r.json();
+  } catch(e) { return null; }
+}
+
+const fmt = n => "$"+(Number(n)||0).toLocaleString("es-CO");
+const fN = n => (Number(n)||0).toLocaleString("es-CO");
+
+// ============================================================
+// APP
+// ============================================================
+function App(){
+  const [loading,setLoading]=useState(true);
+  const [sending,setSending]=useState(false);
+  const [config,setConfig]=useState(null);
+  const [page,setPage]=useState("inicio"); // inicio, formulario, exito
+  const [msg,setMsg]=useState(null);
+
+  // Selección
+  const [sede,setSede]=useState("");
+  const [operador,setOperador]=useState("");
+
+  // Formulario
+  const [f,setF]=useState({
+    numRecibo:"", tokensBase:"", tokensVendidos:"", devTokens:"",
+    valor:"", qr:"", devoluciones:"", observaciones:"",
+  });
+
+  const upd=(k,v)=>setF(prev=>({...prev,[k]:v}));
+
+  // Cargar config
+  useEffect(()=>{
+    apiGet('getConfig').then(data=>{
+      if(data&&data.sedes){
+        CONFIG.tesoreros=data.tesoreros||[];
+        CONFIG.sedes=data.sedes||{};
+        setConfig(data);
+      }
+      setLoading(false);
+    }).catch(()=>setLoading(false));
+  },[]);
+
+  const getSedes=()=>Object.keys(CONFIG.sedes);
+  const getOperadores=(s)=>CONFIG.sedes[s]?.operadores||[];
+
+  // Cálculos
+  const efectivoEsperado=(Number(f.valor)||0)-(Number(f.qr)||0)-(Number(f.devoluciones)||0);
+  const tokensRestantes=(Number(f.tokensBase)||0)-(Number(f.tokensVendidos)||0)-(Number(f.devTokens)||0);
+
+  // Enviar liquidación
+  const enviar=async()=>{
+    if(!sede||!operador||!f.numRecibo) return;
+    setSending(true);
+    setMsg("Enviando liquidación...");
+
+    const liquidacion={
+      sede,
+      operador,
+      numRecibo:f.numRecibo,
+      tokensBase:Number(f.tokensBase)||0,
+      tokensVendidos:Number(f.tokensVendidos)||0,
+      devTokens:Number(f.devTokens)||0,
+      tokensRestantes,
+      valor:Number(f.valor)||0,
+      qr:Number(f.qr)||0,
+      devoluciones:Number(f.devoluciones)||0,
+      efectivo:efectivoEsperado,
+      observaciones:f.observaciones||"",
+      fecha:new Date().toLocaleDateString("es-CO"),
+      hora:new Date().toLocaleTimeString("es-CO",{hour:"2-digit",minute:"2-digit"}),
+      estado:"pendiente",
+    };
+
+    const result = await apiPost({
+      action:'guardarLiquidacionOperador',
+      liquidacion,
+    });
+
+    setSending(false);
+    if(result?.success){
+      setMsg(null);
+      setPage("exito");
+    } else {
+      setMsg("⚠️ Error al enviar: "+(result?.error||"Sin conexión. Intenta de nuevo."));
+    }
+  };
+
+  const nuevaLiquidacion=()=>{
+    setF({ numRecibo:"", tokensBase:"", tokensVendidos:"", devTokens:"", valor:"", qr:"", devoluciones:"", observaciones:"" });
+    setPage("formulario");
+    setMsg(null);
+  };
+
+  const cambiarSede=()=>{
+    setSede("");setOperador("");
+    setPage("inicio");
+    setMsg(null);
+  };
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  return(
+    <div className="app">
+      {/* Header */}
+      <div className="header">
+        <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" alt="P"/>
+        <div>
+          <h1>{page==="inicio"?"Liquidación Operador":sede}</h1>
+          {page!=="inicio"&&<div className="header-sub">{operador} · {new Date().toLocaleDateString("es-CO")}</div>}
+        </div>
+        <div className="header-badge">OPERADOR</div>
+      </div>
+
+      {/* Loading / Messages */}
+      {sending&&(
+        <div className="loading-bar">
+          <div className="loading-spinner"/>
+          <span className="loading-text">{msg||"Enviando..."}</span>
+        </div>
+      )}
+      {msg&&!sending&&(
+        <div style={{padding:"10px 20px",background:msg.includes("⚠️")?"var(--red-d)":"var(--blue-d)",fontSize:12,color:msg.includes("⚠️")?"var(--red)":"var(--blue)",cursor:"pointer"}}
+          onClick={()=>setMsg(null)}>
+          {msg} <span style={{float:"right"}}>✕</span>
+        </div>
+      )}
+
+      <div className="page">
+
+        {/* ===== INICIO: Selección sede + operador ===== */}
+        {page==="inicio"&&(
+          <div>
+            <div style={{textAlign:"center",padding:"30px 0 24px"}}>
+              <img src="https://santiescupine-byte.github.io/panzer-vip/Panzer%20Logo%20FINAL.png" alt="Panzer" style={{width:160,marginBottom:12}}/>
+              <p style={{fontSize:14,color:"#64748b"}}>Ingresa tu liquidación de turno</p>
+            </div>
+
+            <div className="card">
+              <div className="card-t">👤 Identificación</div>
+
+              <label className="label">Sede</label>
+              <select className="select" value={sede} onChange={e=>{setSede(e.target.value);setOperador("");}}>
+                <option value="">Seleccionar sede...</option>
+                {getSedes().map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+
+              <label className="label">Tu nombre</label>
+              <select className="select" value={operador} onChange={e=>setOperador(e.target.value)}>
+                <option value="">Seleccionar operador...</option>
+                {getOperadores(sede).map(o=><option key={o} value={o}>{o}</option>)}
+              </select>
+
+              <button className="btn-primary" disabled={!sede||!operador}
+                onClick={()=>{setPage("formulario");setMsg(null);}}>
+                ✏️ Llenar Liquidación
+              </button>
+            </div>
+
+            <div className="alert blue">
+              💡 Llena este formulario al terminar tu turno. El tesorero revisará tu liquidación cuando haga el recaudo.
+            </div>
+          </div>
+        )}
+
+        {/* ===== FORMULARIO ===== */}
+        {page==="formulario"&&(
+          <div>
+            {/* Recibo */}
+            <div className="card">
+              <div className="card-t">🧾 Datos del Turno</div>
+              <label className="label">Nº de Recibo</label>
+              <input className="input input-accent" placeholder="Ej: 89-0092" value={f.numRecibo} onChange={e=>upd("numRecibo",e.target.value)}/>
+
+              <div className="row">
+                <div className="col">
+                  <label className="label">Sede</label>
+                  <div className="info-read">{sede}</div>
+                </div>
+                <div className="col">
+                  <label className="label">Operador</label>
+                  <div className="info-read">{operador}</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tokens */}
+            <div className="card">
+              <div className="card-t">🪙 Tokens</div>
+              <div className="row">
+                <div className="col">
+                  <label className="label">Base (inicio turno)</label>
+                  <input className="input" type="number" inputMode="numeric" placeholder="0" value={f.tokensBase} onChange={e=>upd("tokensBase",e.target.value)}/>
+                </div>
+                <div className="col">
+                  <label className="label">Vendidos</label>
+                  <input className="input" type="number" inputMode="numeric" placeholder="0" value={f.tokensVendidos} onChange={e=>upd("tokensVendidos",e.target.value)}/>
+                </div>
+                <div className="col">
+                  <label className="label">Dev. Tokens</label>
+                  <input className="input" type="number" inputMode="numeric" placeholder="0" value={f.devTokens} onChange={e=>upd("devTokens",e.target.value)}/>
+                </div>
+              </div>
+              <div className="alert blue" style={{margin:0}}>
+                🪙 Tokens restantes: <strong style={{marginLeft:4}}>{fN(tokensRestantes)}</strong>
+              </div>
+            </div>
+
+            {/* Valores */}
+            <div className="card">
+              <div className="card-t">💵 Valores</div>
+              <label className="label">Valor Total (Productos + Tokens)</label>
+              <input className="input input-accent" type="number" inputMode="numeric" placeholder="$0" value={f.valor} onChange={e=>upd("valor",e.target.value)}/>
+
+              <div className="row">
+                <div className="col">
+                  <label className="label">Valor QR</label>
+                  <input className="input" type="number" inputMode="numeric" placeholder="$0" value={f.qr} onChange={e=>upd("qr",e.target.value)}/>
+                </div>
+                <div className="col">
+                  <label className="label">Devoluciones $</label>
+                  <input className="input" type="number" inputMode="numeric" placeholder="$0" value={f.devoluciones} onChange={e=>upd("devoluciones",e.target.value)}/>
+                </div>
+              </div>
+
+              <div className="sep"/>
+
+              <div className="result-row">
+                <span className="result-label">Efectivo esperado</span>
+                <span className="result-value" style={{color:"var(--green)"}}>{fmt(efectivoEsperado)}</span>
+              </div>
+            </div>
+
+            {/* Observaciones */}
+            <div className="card">
+              <label className="label">Observaciones</label>
+              <textarea className="input" style={{minHeight:70,resize:"vertical"}} placeholder="Notas: tokens de aseo, devoluciones, membresías..."
+                value={f.observaciones} onChange={e=>upd("observaciones",e.target.value)}/>
+            </div>
+
+            {/* Resumen antes de enviar */}
+            <div className="card" style={{background:"var(--blue-g)",borderColor:"rgba(59,130,246,.2)"}}>
+              <div className="card-t" style={{color:"var(--blue)"}}>📋 Resumen</div>
+              <div className="result-row"><span className="result-label">Recibo</span><span className="result-value">{f.numRecibo||"—"}</span></div>
+              <div className="result-row"><span className="result-label">Tokens vendidos</span><span className="result-value" style={{color:"var(--amber)"}}>{fN(f.tokensVendidos)}</span></div>
+              <div className="result-row"><span className="result-label">Dev. tokens</span><span className="result-value" style={{color:"var(--purple)"}}>{fN(f.devTokens)}</span></div>
+              <div className="result-row"><span className="result-label">Valor total</span><span className="result-value">{fmt(f.valor)}</span></div>
+              <div className="result-row"><span className="result-label">QR</span><span className="result-value" style={{color:"var(--blue)"}}>{fmt(f.qr)}</span></div>
+              <div className="result-row"><span className="result-label">Devoluciones $</span><span className="result-value" style={{color:"var(--red)"}}>{fmt(f.devoluciones)}</span></div>
+              <div className="sep"/>
+              <div className="result-row" style={{borderBottom:"none"}}>
+                <span className="result-label" style={{fontWeight:700,color:"var(--green)"}}>Efectivo esperado</span>
+                <span className="result-value" style={{color:"var(--green)",fontSize:20}}>{fmt(efectivoEsperado)}</span>
+              </div>
+            </div>
+
+            <button className="btn-primary" disabled={!f.numRecibo||!f.valor||sending}
+              onClick={enviar}>
+              📤 Enviar Liquidación
+            </button>
+
+            <button className="btn-secondary" style={{marginTop:10}} onClick={cambiarSede}>
+              ← Cambiar sede / operador
+            </button>
+          </div>
+        )}
+
+        {/* ===== ÉXITO ===== */}
+        {page==="exito"&&(
+          <div className="success-screen">
+            <div className="success-icon">✅</div>
+            <div className="success-title">Liquidación Enviada</div>
+            <div className="success-sub">
+              Tu liquidación quedó registrada. El tesorero la revisará cuando haga el recaudo de <strong>{sede}</strong>.
+            </div>
+
+            <div className="card" style={{textAlign:"left",marginBottom:20}}>
+              <div className="result-row"><span className="result-label">Sede</span><span className="result-value">{sede}</span></div>
+              <div className="result-row"><span className="result-label">Operador</span><span className="result-value">{operador}</span></div>
+              <div className="result-row"><span className="result-label">Recibo</span><span className="result-value">{f.numRecibo}</span></div>
+              <div className="result-row"><span className="result-label">Tokens vendidos</span><span className="result-value" style={{color:"var(--amber)"}}>{fN(f.tokensVendidos)}</span></div>
+              <div className="result-row" style={{borderBottom:"none"}}><span className="result-label">Efectivo esperado</span><span className="result-value" style={{color:"var(--green)"}}>{fmt(efectivoEsperado)}</span></div>
+            </div>
+
+            <button className="btn-primary" onClick={nuevaLiquidacion}>
+              ✏️ Llenar Otra Liquidación
+            </button>
+            <button className="btn-secondary" style={{marginTop:10}} onClick={cambiarSede}>
+              🔄 Cambiar Sede / Operador
+            </button>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(<App/>);
+setTimeout(()=>document.getElementById('loading').classList.add('hide'),500);
+  </script>
+</body>
+</html>
