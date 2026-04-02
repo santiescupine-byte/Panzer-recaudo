@@ -376,7 +376,7 @@ function App(){
   // Global stats
   const gStats=useMemo(()=>{
     const cf=filtered;
-    let recaudo=0,gastos=0,tokVend=0,tokDev=0,descuadres=0,alertas=0,producido=0;
+    let recaudo=0,gastos=0,tokVend=0,tokDev=0,tokMembresia=0,descuadres=0,alertas=0,producido=0;
     cf.forEach(c=>{
       const el=c.liquidaciones.reduce((s,l)=>s+(Number(l.efectivo)||0),0);
       const em=Number(c.conteoFisico?.efectivoTotal)||0;
@@ -384,6 +384,7 @@ function App(){
       gastos+=(c.gastos||[]).reduce((s,g)=>s+(Number(g.monto)||0),0);
       tokVend+=c.liquidaciones.reduce((s,l)=>s+(Number(l.tokensVendidos)||0),0);
       tokDev+=c.liquidaciones.reduce((s,l)=>s+(Number(l.devTokens)||0),0);
+      tokMembresia+=c.liquidaciones.reduce((s,l)=>s+(Number(l.tokensMembresia)||0),0);
       descuadres+=c.liquidaciones.reduce((s,l)=>s+Math.abs(Number(l.descuadre)||0),0);
       producido+=(c.maquinas||[]).reduce((s,m)=>s+(Number(m.producido)||0),0);
       // Count operator alerts
@@ -391,7 +392,7 @@ function App(){
         if(op.saldoEsperado!==null&&op.saldoEsperado<0) alertas++;
       });
     });
-    return {recaudo,gastos,consignar:recaudo-gastos,tokVend,tokDev,descuadres,alertas,producido,count:cf.length};
+    return {recaudo,gastos,consignar:recaudo-gastos,tokVend,tokDev,tokMembresia,descuadres,alertas,producido,count:cf.length};
   },[filtered]);
 
   return (
@@ -446,7 +447,7 @@ function App(){
           <div className="st g"><div className="st-l">A Consignar</div><div className="st-v" style={{color:"var(--green)"}}>{fmt(gStats.consignar)}</div><div className="st-s">{gStats.count} ciclo(s)</div></div>
           <div className="st a"><div className="st-l">Recaudo Bruto</div><div className="st-v" style={{color:"var(--amber)"}}>{fmt(gStats.recaudo)}</div></div>
           <div className="st b"><div className="st-l">Producido Máq.</div><div className="st-v" style={{color:"var(--blue)"}}>{fmt(gStats.producido)}</div></div>
-          <div className="st p"><div className="st-l">Tokens Vendidos</div><div className="st-v" style={{color:"var(--purple)"}}>{fN(gStats.tokVend)}</div><div className="st-s">Dev: {fN(gStats.tokDev)}</div></div>
+          <div className="st p"><div className="st-l">Tokens Vendidos</div><div className="st-v" style={{color:"var(--purple)"}}>{fN(gStats.tokVend)}</div><div className="st-s">Dev: {fN(gStats.tokDev)} · 🎫: {fN(gStats.tokMembresia)}</div></div>
           <div className="st r"><div className="st-l">Descuadres</div><div className="st-v" style={{color:gStats.descuadres>0?"var(--red)":"var(--green)"}}>{gStats.descuadres>0?fmt(gStats.descuadres):"✓ $0"}</div></div>
           <div className="st c"><div className="st-l">Gastos</div><div className="st-v" style={{color:"var(--cyan)"}}>{fmt(gStats.gastos)}</div></div>
         </div>
@@ -680,9 +681,10 @@ function CicloDetail({c,tab,setTab}){
   // Agrupar liquidaciones por operador
   const opMap={};
   c.liquidaciones.forEach(l=>{
-    if(!opMap[l.operador]) opMap[l.operador]={vendidos:0,devTokens:0,efectivo:0,descuadre:0,count:0,qr:0};
+    if(!opMap[l.operador]) opMap[l.operador]={vendidos:0,devTokens:0,tokensMembresia:0,efectivo:0,descuadre:0,count:0,qr:0};
     opMap[l.operador].vendidos+=(Number(l.tokensVendidos)||0);
     opMap[l.operador].devTokens+=(Number(l.devTokens)||0);
+    opMap[l.operador].tokensMembresia+=(Number(l.tokensMembresia)||0);
     opMap[l.operador].efectivo+=(Number(l.efectivo)||0);
     opMap[l.operador].descuadre+=(Number(l.descuadre)||0);
     opMap[l.operador].qr+=(Number(l.qr)||0);
@@ -692,6 +694,7 @@ function CicloDetail({c,tab,setTab}){
   // ALERTA CLAVE: Tokens egresados por operadores vs tokens ingresados a máquinas
   const totalVendidosLiq=c.liquidaciones.reduce((s,l)=>s+(Number(l.tokensVendidos)||0),0);
   const totalDevTokensLiq=c.liquidaciones.reduce((s,l)=>s+(Number(l.devTokens)||0),0);
+  const totalMembresiaLiq=c.liquidaciones.reduce((s,l)=>s+(Number(l.tokensMembresia)||0),0);
   const tokensEgresados=totalVendidosLiq+totalDevTokensLiq; // lo que salió de manos de operadores
   const tokensEnMaquinas=sumaTokenDia; // lo que entró a las máquinas (TOKEN_DIA)
   const difEgresoVsMaq=tokensEnMaquinas-tokensEgresados; // positivo = entraron más de lo que vendieron
@@ -945,8 +948,9 @@ function CicloDetail({c,tab,setTab}){
             </div>
           )}
 
-          {/* Operador cards */}
+          {/* Operador cards — calcular membresía por operador desde liquidaciones */}
           {controlTokens.map((op,i)=>{
+            const membresiaOp=c.liquidaciones.filter(l=>l.operador===op.nombre).reduce((s,l)=>s+(Number(l.tokensMembresia)||0),0);
             const isAlert=op.saldoEsperado!==null&&op.saldoEsperado<0;
             const saldo=op.historial?.saldo||0;
             return(
@@ -970,6 +974,11 @@ function CicloDetail({c,tab,setTab}){
                     <div className="op-pill-l">Dev. Tok</div>
                     <div className="op-pill-v" style={{color:"var(--purple)"}}>−{fN(op.devTokensEsteC)}</div>
                   </div>
+                  <div className="op-arrow">→</div>
+                  <div className="op-pill">
+                    <div className="op-pill-l">🎫 Membresía</div>
+                    <div className="op-pill-v" style={{color:"#ec4899"}}>−{fN(membresiaOp)}</div>
+                  </div>
                   <div className="op-arrow">=</div>
                   <div className="op-pill" style={{background:isAlert?"var(--red-d)":"var(--green-d)",borderColor:isAlert?"rgba(239,68,68,.3)":"rgba(16,185,129,.3)"}}>
                     <div className="op-pill-l">Debe tener</div>
@@ -992,6 +1001,7 @@ function CicloDetail({c,tab,setTab}){
             <div className="dr"><span className="l">Σ Saldos anteriores (operadores)</span><span className="v">{fN(tr.totalSaldoAnterior)}</span></div>
             <div className="dr"><span className="l">Σ Vendidos este ciclo</span><span className="v" style={{color:"var(--blue)"}}>−{fN(tr.totalVendidosCiclo)}</span></div>
             <div className="dr"><span className="l">Σ Dev. tokens ciclo</span><span className="v" style={{color:"var(--purple)"}}>−{fN(tr.totalDevTokensCiclo)}</span></div>
+            <div className="dr"><span className="l">Σ 🎫 Membresía ciclo</span><span className="v" style={{color:"#ec4899"}}>{fN(totalMembresiaLiq)}</span></div>
             <div className="sep"/>
             <div className="dr">
               <span className="l" style={{fontWeight:700,color:(tr.tokensPerdidos||0)===0?"var(--green)":"var(--red)"}}>
@@ -1008,7 +1018,7 @@ function CicloDetail({c,tab,setTab}){
               <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 12px",background:"var(--sf2)",borderRadius:10,border:"1px solid var(--bd)",marginBottom:6}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>{name}</div>
-                  <div style={{fontSize:11,color:"var(--td)"}}>{data.count} liq. · Tok: {fN(data.vendidos)} · Dev: {fN(data.devTokens)} · QR: {fmt(data.qr)}</div>
+                  <div style={{fontSize:11,color:"var(--td)"}}>{data.count} liq. · Tok: {fN(data.vendidos)} · Dev: {fN(data.devTokens)} · 🎫: {fN(data.tokensMembresia)} · QR: {fmt(data.qr)}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
                   <div style={{fontSize:16,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)"}}>{fmt(data.efectivo)}</div>
@@ -1147,7 +1157,7 @@ function CicloDetail({c,tab,setTab}){
                   <div style={{fontSize:16,fontWeight:800,color:"var(--green)",fontFamily:"var(--mono)"}}>{fmt(l.efectivo)}</div>
                 </div>
                 <div style={{fontSize:11,color:"var(--td)"}}>
-                  Tok: {fN(l.tokensVendidos)} · Dev: {fN(l.devTokens)} · QR: {fmt(l.qr)} · Valor: {fmt(l.valor)}
+                  Tok: {fN(l.tokensVendidos)} · Dev: {fN(l.devTokens)}{(Number(l.tokensMembresia)||0)>0&&<> · 🎫: {fN(l.tokensMembresia)}</>} · QR: {fmt(l.qr)} · Valor: {fmt(l.valor)}
                   {l.descuadre!==0&&<span style={{color:"var(--red)",fontWeight:700}}> · Δ{fmt(l.descuadre)}</span>}
                 </div>
                 {l.observaciones&&<div style={{marginTop:6,fontSize:11,color:"var(--amber)"}}>📝 {l.observaciones}</div>}
@@ -1194,7 +1204,7 @@ function CicloDetail({c,tab,setTab}){
                 <div style={{fontSize:9,color:"var(--td)",fontWeight:700,textTransform:"uppercase",letterSpacing:".5px",marginBottom:6}}>Tokens Egresados</div>
                 <div style={{fontSize:36,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)"}}>{fN(tokensEgresados)}</div>
                 <div style={{fontSize:11,color:"var(--td)",marginTop:6}}>
-                  <span style={{color:"var(--tb)",fontWeight:600}}>{fN(totalVendidosLiq)}</span> vendidos + <span style={{color:"var(--purple)",fontWeight:600}}>{fN(totalDevTokensLiq)}</span> devueltos
+                  <span style={{color:"var(--tb)",fontWeight:600}}>{fN(totalVendidosLiq)}</span> vendidos + <span style={{color:"var(--purple)",fontWeight:600}}>{fN(totalDevTokensLiq)}</span> devueltos{totalMembresiaLiq>0&&<><br/><span style={{color:"#ec4899",fontWeight:600}}>{fN(totalMembresiaLiq)}</span> 🎫 membresía</>}
                 </div>
                 <div style={{fontSize:10,color:"var(--td)",marginTop:2}}>Lo que salió de manos de operadores</div>
               </div>
@@ -1251,15 +1261,21 @@ function CicloDetail({c,tab,setTab}){
                     <div style={{fontSize:14,fontWeight:700,color:"var(--tb)"}}>{name}</div>
                     <div style={{fontSize:18,fontWeight:800,color:"var(--blue)",fontFamily:"var(--mono)"}}>{fN(egresadosOp)}</div>
                   </div>
-                  <div style={{display:"flex",gap:8,marginBottom:8}}>
-                    <div style={{flex:1,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid var(--bd)"}}>
+                  <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap"}}>
+                    <div style={{flex:1,minWidth:80,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid var(--bd)"}}>
                       <span style={{fontSize:10,color:"var(--td)"}}>Vendidos</span>
                       <span style={{fontSize:12,fontWeight:700,color:"var(--tb)",fontFamily:"var(--mono)"}}>{fN(data.vendidos)}</span>
                     </div>
-                    <div style={{flex:1,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid var(--bd)"}}>
+                    <div style={{flex:1,minWidth:80,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid var(--bd)"}}>
                       <span style={{fontSize:10,color:"var(--td)"}}>Dev. Tok</span>
                       <span style={{fontSize:12,fontWeight:700,color:"var(--purple)",fontFamily:"var(--mono)"}}>{fN(data.devTokens)}</span>
                     </div>
+                    {(data.tokensMembresia||0)>0&&(
+                    <div style={{flex:1,minWidth:80,display:"flex",justifyContent:"space-between",padding:"6px 10px",background:"var(--sf)",borderRadius:6,border:"1px solid rgba(236,72,153,.25)"}}>
+                      <span style={{fontSize:10,color:"var(--td)"}}>🎫 Membresía</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"#ec4899",fontFamily:"var(--mono)"}}>{fN(data.tokensMembresia)}</span>
+                    </div>
+                    )}
                   </div>
                   <div style={{height:5,background:"var(--sf3)",borderRadius:3,overflow:"hidden"}}>
                     <div style={{height:"100%",borderRadius:3,width:`${pctTotal}%`,background:"linear-gradient(90deg,var(--blue),rgba(59,130,246,.3))",transition:"width .6s"}}/>
