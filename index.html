@@ -2154,7 +2154,8 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
           const tieneHistorial = op.historial !== null && !baseSede;
           const vendidosCiclo = op.vendidosEsteC;
           const devTokensCiclo = op.devTokensEsteC;
-          const saldoEsperado = tieneHistorial ? op.historial.saldo - vendidosCiclo - devTokensCiclo : null;
+          const membresiaCiclo = op.membresiaEsteC || 0;
+          const saldoEsperado = tieneHistorial ? op.historial.saldo - vendidosCiclo - devTokensCiclo - membresiaCiclo : null;
           const estado = baseSede ? "sede" : saldoEsperado === null ? "sin_historial" : saldoEsperado >= 0 ? "ok" : "faltante";
 
           return (
@@ -2186,6 +2187,12 @@ function RepartoTokens({ liquidaciones, tokensMaq, sede, gastos, historialTokens
                       <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>Dev. Tokens</div>
                       <div style={{ fontSize: 16, fontWeight: 800, color: colors.purple }}>−{fmtNum(devTokensCiclo)}</div>
                     </div>
+                    {membresiaCiclo > 0 && (
+                    <div style={{ flex: 1, minWidth: 80, background: colors.surface2, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                      <div style={{ fontSize: 9, color: colors.textDim, fontWeight: 600, textTransform: "uppercase" }}>🎫 Membresía</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#ec4899" }}>−{fmtNum(membresiaCiclo)}</div>
+                    </div>
+                    )}
                     <div style={{
                       flex: 1, minWidth: 80, borderRadius: 8, padding: "8px 10px", textAlign: "center",
                       background: saldoEsperado >= 0 ? colors.greenDim : colors.redDim,
@@ -2807,7 +2814,7 @@ function ResumenFinal({ ciclo, totales, liquidaciones, maquinas, gastos, tokenRe
                 </div>
                 {op.historial ? (
                   <div style={{ fontSize: 12, color: colors.textDim }}>
-                    Saldo ant: {fmtNum(op.historial.saldo)} · Vendidos: {fmtNum(op.vendidosEsteC)} · Dev: {fmtNum(op.devTokensEsteC)} · <strong style={{ color: op.saldoEsperado >= 0 ? colors.green : colors.red }}>Debe tener: {fmtNum(op.saldoEsperado)}</strong>
+                    Saldo ant: {fmtNum(op.historial.saldo)} · Vendidos: {fmtNum(op.vendidosEsteC)} · Dev: {fmtNum(op.devTokensEsteC)}{op.membresiaEsteC > 0 && <> · 🎫: {fmtNum(op.membresiaEsteC)}</>} · <strong style={{ color: op.saldoEsperado >= 0 ? colors.green : colors.red }}>Debe tener: {fmtNum(op.saldoEsperado)}</strong>
                   </div>
                 ) : (
                   <div style={{ fontSize: 12, color: colors.textDim }}>Sin historial · Vendió: {fmtNum(op.vendidosEsteC)}</div>
